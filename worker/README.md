@@ -80,3 +80,36 @@ The additional real-engine offline check runs only the supplied 60-second synthe
 Verified on 28 October 2026: 11 complete model windows, 2 statistics windows, 1 attention window and 741 truthful overview points were exported. The real `partial` execution status was preserved. Temporary runtime data stayed inside an isolated workspace directory and was removed afterward. This check made no cloud or AI requests; live project acceptance is separate.
 
 `export_visual_fixture.py` is a separate read-only check helper. It reads only the explicitly identified cached synthetic QA recording, verifies the known input hash and QA markers, and writes `.tmp/visual-fixture.json` for the temporary visual harness. It makes no model, AI or cloud call and verifies that the cached source files are unchanged. The fixture intentionally omits the old simulated explanation so the ungenerated-report state can be checked. It is not used by the production application.
+
+## Disposable cloud acceptance
+
+`cloud_smoke.py` is the reproducible test source. It uses the same protected credential-loading code as the normal worker; the thin `Run-Cloud-Smoke.ps1` wrapper delegates to `Run-Worker.ps1`. Credentials and generated test passwords remain in memory. It is restricted to the selected development project `hboyzyzzlzkgzubpsieo`.
+
+```powershell
+# Creates two temporary, auto-confirmed synthetic test users. No AI request.
+.\Run-Cloud-Smoke.ps1 -Execute
+
+# Additionally runs exactly one consented report and one question on synthetic input.
+# This uses the existing DeepSeek account and incurs its normal API usage.
+.\Run-Cloud-Smoke.ps1 -Execute -WithAI
+```
+
+The test uploads only the known synthetic workbook. It verifies the seven business domains, persistent owner changes, foreign-user denials, private file access, immutable input metadata, queue consent/idempotency, numerical output, complete windows, overview and interval waveforms, result hashes, and recycle-bin/permanent-deletion boundaries. Profile deletion remains an account boundary; the test does not add generic UI deletion features. It refuses to run the worker while an unrelated queued/running job exists. Only this run's tracked cloud paths, rows and users are cleaned up. Newly generated local synthetic analysis artifacts remain in `E:\breathmap` for audit.
+
+Verified on 28 October 2026: the full seven-domain/live-AI run passed 127 checks. DeepSeek's official API processed four successful completions using `deepseek-flash`: one report evidence request, its explanation, one question evidence request and its answer. The only tool was `get_record_evidence`; numerical artifact hashes did not change. Report provenance and exact report/question citation bindings passed validation. No real user account, password or participant data was involved. Two test users and their cloud resources were removed; a separate read-only SQL check confirmed zero remaining rows/objects across Auth, all seven business tables, jobs, results and Storage.
+
+Sanitized reports are written to `.tmp/cloud-smoke-<run-id>.json`, outside production assets. The full run's report is `cloud-smoke-fbf48f74-5785-4b5b-897c-13676ee299d8.json`. The earlier numeric-only cloud run passed 53 checks before the seven-domain extension. Provider-failure preservation is covered by deterministic unit fault injection, without spending extra API calls to simulate an outage. API acceptance does not establish browser signup, SMTP delivery, password-reset email links or mobile-browser acceptance; those are separate checks.
+
+## Tracked synthetic browser session
+
+`prepare_browser_qa.py` can seed one fresh confirmed test user with the known synthetic workbook, a previously verified saved result/report and a private overview. It does not rerun the model or call AI. A local alias maps the new test record to those same immutable synthetic outputs for interval waveform checks. It never changes a real user's password or email-confirmation settings.
+
+Run `Run-Worker.ps1 -BrowserQA prepare` to create the tracked test resources. The nonsecret cleanup state is `.tmp/browser-qa-state.json`. After the browser checks, run `Run-Worker.ps1 -BrowserQA cleanup`; it verifies the test-user marker, deletes only that user's private object prefixes and Auth account, and removes the new local alias while preserving the source analysis files.
+
+The separate `-BrowserQA link -PrivateOutput` action generates a one-time Supabase magic link without sending email. Its stdout must be captured privately by the controller; do not run it in an echoed terminal, print it in a tool result, save it, or capture its URL in a screenshot. The helper validates the exact Supabase verification origin and the authorized BreathMap HTTPS redirect. Magic links authenticate the test account within BreathMap; they do not bypass hosting access controls. No login link is stored in the cleanup state or any project file.
+
+For browser controllers that cannot share private in-memory variables, `Run-Worker.ps1 -BrowserQA login` uses a one-use loopback handoff. It prints only a temporary `127.0.0.1` URL, keeps the real Supabase action link in memory, and responds to the exact random path once with a 303 redirect. The listener has no access logs and stops after one redirect or five minutes. Permanent server credentials are removed from the helper environment before it listens. This is temporary test tooling and is not deployed with the website.
+
+The current production client uses PKCE, so an admin-generated implicit magic link is not its normal sign-in flow. Do not change production Auth to accommodate that QA shortcut. Instead, `Run-Worker.ps1 -BrowserQA login-password` sets a fresh random password only for the tracked disposable test account, then serves a single local HTML page with readonly `#qa-email` and password-masked `#qa-password` fields. The browser controller reads them into private memory and fills the normal production sign-in form. The page has no form, JavaScript or external resources; it is not cached, contains no permanent server key, stops after one GET/five minutes and writes no credential to stdout or files. The user's real accounts and passwords remain untouched.
+
+If the browser controller intentionally redacts credential values, respect that protection; do not try to recover the masked value or use the clipboard. Use `Run-Worker.ps1 -BrowserQA set-password` in a TTY instead. The controller chooses a new disposable QA fixture password it already knows and supplies it through the hidden `getpass` prompt, then uses that same new value for normal sign-in. The helper verifies the tracked QA-user marker and accepts only 24–128 printable ASCII characters containing upper/lowercase letters, a digit and a symbol. It refuses nonhidden input, modifies only that test account, and outputs only status, email and user ID. No password is accepted through arguments or files, and production Auth settings remain unchanged.

@@ -360,7 +360,8 @@ function bmRecordingState(record:any,t:T):string {
   if (a?.execution.status === "success") return t("Analysis available", "已有分析结果");
   if (a?.execution.status === "unable_to_analyze") return t("Unable to analyse", "无法分析");
   if (a?.execution.status === "error") return t("Analysis failed", "分析失败");
-  return t("Uploaded · not analysed", "已上传 · 尚未分析");
+  const status = plain(record?.fields?.status);
+  return ({Queued:t("Waiting for analysis","等待分析"),Processing:t("Analysing recording","正在分析记录"),Failed:t("Analysis failed","分析失败"),Interrupted:t("Processing interrupted","处理已中断")} as Record<string,string>)[status] || t("Uploaded · not analysed", "已上传 · 尚未分析");
 }
 
 
@@ -683,7 +684,7 @@ export default function Block(){
       <div className="trash-list">{rows.map(r=><div className="trash-row" key={r.id}>
         <span className="record-icon"><FileText className="icon"/></span>
         <div className="trash-record-copy"><h2>{plain(r.fields.title)}</h2><p>{t("Recorded: ","采集时间：")}{fmtDate(r.fields.recordedAt,lang)}</p><p>{t("Moved: ","移入时间：")}{fmtDate(r.fields.trashedAt,lang)}</p></div>
-        <span className="status neutral">{t("Not analysed","尚未分析")}</span>
+        <span className="status neutral">{bmRecordingState(r,t)}</span>
         <div className="trash-actions"><button type="button" className="btn secondary" disabled={busy||!update.enabled} onClick={()=>changeTrash(r,true)} aria-label={t(`Restore ${plain(r.fields.title)}`,`恢复${plain(r.fields.title)}`)}><RotateCcw className="icon"/>{t("Restore recording","恢复记录")}</button><button type="button" className="btn quiet danger-button" disabled={busy||!remove.enabled} onClick={()=>openDialog("delete",r)} aria-label={t(`Permanently delete ${plain(r.fields.title)}`,`彻底删除${plain(r.fields.title)}`)}><Trash2 className="icon"/>{t("Permanently delete","彻底删除")}</button></div>
       </div>)}</div>
       {records.hasNextPage&&<div className="button-row"><button type="button" className="btn secondary" onClick={()=>records.fetchNextPage()} disabled={records.isFetchingNextPage}>{records.isFetchingNextPage?t("Loading…","正在读取……"):t("Load more recordings","加载更多记录")}</button></div>}
@@ -693,7 +694,7 @@ export default function Block(){
         <NavLink to={links.report} record={r} className="record-open">
           <span className="record-icon"><FileText size={20}/></span>
           <span className="record-name"><strong>{plain(r.fields.title)}</strong><span>{fmtDate(r.fields.recordedAt, lang)} · {plain(r.fields.details) || t("No recording details added", "未填写采集情况")}</span></span>
-          <span className="status neutral">{t("Not analysed", "尚未分析")}</span>
+          <span className="status neutral">{bmRecordingState(r,t)}</span>
           <span className="row-arrow"><ArrowRight size={18}/></span>
         </NavLink>
         <button type="button" className="record-delete" disabled={busy || !update.enabled} onClick={() => openDialog("trash", r)} aria-label={t(`Move ${plain(r.fields.title)} to recycle bin`, `将${plain(r.fields.title)}移入回收站`)}><Trash2 size={16}/>{t("Move to recycle bin", "移入回收站")}</button>

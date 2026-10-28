@@ -1,5 +1,11 @@
-param([switch]$Once)
+param([switch]$Once,[switch]$CloudSmoke,[switch]$WithAI,
+      [ValidateSet('prepare','link','login','login-password','set-password','cleanup')][string]$BrowserQA,[switch]$PrivateOutput)
 $ErrorActionPreference = 'Stop'
+if ($WithAI -and !$CloudSmoke) { throw 'WithAI is reserved for the explicit disposable synthetic cloud check.' }
+if ($Once -and $CloudSmoke) { throw 'Choose worker single-job mode or cloud acceptance mode.' }
+if ($BrowserQA -and ($CloudSmoke -or $Once -or $WithAI)) { throw 'Browser QA is a separate explicit action.' }
+if ($PrivateOutput -and $BrowserQA -ne 'link') { throw 'Private output is reserved for the browser QA link action.' }
+if ($BrowserQA -eq 'link' -and !$PrivateOutput) { throw 'Capture the link privately with PrivateOutput; never echo or save it.' }
 $taskConfigDir = 'E:\breathmap\config\supabase-web'
 $taskSettingsFile = Join-Path $taskConfigDir 'settings.json'
 $taskKeyFile = Join-Path $taskConfigDir 'worker-key.dpapi'
@@ -15,8 +21,16 @@ try {
   $env:SUPABASE_SECRET_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($taskPointer)
   $taskPython = Join-Path $PSScriptRoot '..\..\BreathMap_local_20261027\.venv\Scripts\python.exe'
   if (!(Test-Path -LiteralPath $taskPython)) { throw 'The existing BreathMap Python environment was not found.' }
-  $taskArguments = @('-B','-X','utf8',(Join-Path $PSScriptRoot 'breathmap_worker.py'))
-  if ($Once) { $taskArguments += '--once' }
+  if ($BrowserQA) {
+    $taskArguments = @('-B','-X','utf8',(Join-Path $PSScriptRoot 'prepare_browser_qa.py'),$BrowserQA)
+    if ($PrivateOutput) { $taskArguments += '--private-output' }
+  } elseif ($CloudSmoke) {
+    $taskArguments = @('-B','-X','utf8',(Join-Path $PSScriptRoot 'cloud_smoke.py'),'--execute')
+    if ($WithAI) { $taskArguments += '--with-ai' }
+  } else {
+    $taskArguments = @('-B','-X','utf8',(Join-Path $PSScriptRoot 'breathmap_worker.py'))
+    if ($Once) { $taskArguments += '--once' }
+  }
   & $taskPython @taskArguments
   $taskExit = $LASTEXITCODE
 } finally {

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 from pathlib import Path
 import tempfile
 import unittest
@@ -348,6 +349,42 @@ class WorkerTests(unittest.TestCase):
             detach_worker_credentials()
             self.assertNotIn("SUPABASE_SECRET_KEY", os.environ)
             self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", os.environ)
+
+    def test_hidden_fixture_password_updates_only_tracked_qa_user(self):
+        import prepare_browser_qa as helper
+        state = {"user_id": uid()}
+        user = {"id": state["user_id"], "email": "disposable-test@example.invalid"}
+        class Admin:
+            calls = []
+            def request(self, method, path, value):
+                self.calls.append((method, path, value))
+                return {"id": state["user_id"]}
+        admin = Admin()
+        password = secrets.token_urlsafe(32) + "Aa7!"
+        with patch.object(helper, "require_state", return_value=(state, user)), patch.object(helper.getpass, "getpass", return_value=password):
+            output = helper.set_password(admin)
+        self.assertEqual(len(admin.calls), 1)
+        self.assertEqual(admin.calls[0][0:2], ("PUT", "/auth/v1/admin/users/" + state["user_id"]))
+        self.assertEqual(set(admin.calls[0][2]), {"password"})
+        self.assertEqual(set(output), {"status", "user_id", "email"})
+
+    def test_weak_fixture_password_does_not_call_admin(self):
+        import prepare_browser_qa as helper
+        state = {"user_id": uid()}
+        admin = unittest.mock.Mock()
+        with patch.object(helper, "require_state", return_value=(state, {})), patch.object(helper.getpass, "getpass", return_value="weak"):
+            with self.assertRaisesRegex(WorkerError, "qa_password_requires"):
+                helper.set_password(admin)
+        admin.request.assert_not_called()
+
+    def test_nonhidden_fixture_input_is_refused(self):
+        import prepare_browser_qa as helper
+        state = {"user_id": uid()}
+        admin = unittest.mock.Mock()
+        with patch.object(helper, "require_state", return_value=(state, {})), patch.object(helper.getpass, "getpass", side_effect=helper.getpass.GetPassWarning("unavailable")):
+            with self.assertRaisesRegex(WorkerError, "hidden_password_input_unavailable"):
+                helper.set_password(admin)
+        admin.request.assert_not_called()
 
     def test_ai_requires_explicit_per_record_consent(self):
         self.bind()
