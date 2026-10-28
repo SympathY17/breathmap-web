@@ -9,7 +9,7 @@ Date: 2026-10-28 (Asia/Shanghai).
 | Production compilation | TypeScript + Vite passed | Ten copied pages, new Auth and connected analysis UI compile; no hosted login implied |
 | Frontend boundaries and forms | 75 Vitest checks passed | UUID filtering, safe writes, Auth callbacks, private downloads, result replacement, 25-window pagination, retained results during AI failure/offline state, wellbeing form persistence and deletion readback |
 | Database execution | 43 PGlite PostgreSQL checks passed | Schema upgrade, RLS, grants, storage policy stubs, queue transitions, stale leases, restart fencing and frozen deletion lifecycle |
-| Worker | 66 Python checks passed | Ownership, hashes, explicit numeric retries, publication reconciliation, exact artifact rollback, ambiguous upload handling, consent and scoped disposable-test cleanup |
+| Worker | 70 Python checks passed | Ownership, hashes, explicit numeric retries, publication reconciliation, exact artifact rollback, ambiguous upload handling, consent, scoped cleanup and manual-retention protection |
 | Existing model integration | Synthetic 60-second input, isolated transport | Real model: 11 model windows, 2 statistics windows, 1 attention window; no real cloud or AI calls |
 | Read-only browser checks | Actual React pages with cached synthetic fixture | Home, recordings, upload, recycle bin, preferences, security, guide, seven wellbeing views, account/login/signup/password reset, report/analysis display |
 | Responsive checks | Browser viewport 320/390/768 px | Main pages showed no document horizontal overflow; analysis displayed three waveforms and actual fixture metrics |
@@ -24,7 +24,7 @@ The browser fixture is under `.tmp`, visibly labelled read-only synthetic QA, an
 - Netlify production is ready at `https://breathmap-sympathy.netlify.app`, connected to GitHub `main`. UI release `8710743f5c32349808114dcfb10874f3a6b2e76a` was verified ready in deploy `6ae1843ae720627a733e68bb`. A prior successful build lacked the public frontend settings; this was found in the actual browser and corrected through the project UI.
 - The user explicitly authorized opening the website. Only this project's production entry is public; previews remain private. A broad `all-projects` connector mutation was rejected and did not apply; the narrower per-project production setting was then verified in the UI.
 - Supabase project `hboyzyzzlzkgzubpsieo` is healthy in Singapore on the user-approved free plan. Three migrations were applied, including the deletion/restart lifecycle fix; all ten public tables have RLS. The security advisor was rerun and reports one Auth warning: leaked-password protection is disabled. Supabase makes that feature available on Pro and above, so the free plan was retained. See [password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). No other security lint was returned. Initial performance advice contained unused-index information for the new tables.
-- Private GitHub repository `SympathY17/breathmap-web` contains the full source and follow-up fixes. The Codex connector was explicitly authorized for this repository only. Source synchronization uses that connector; Git CLI transport from this host could not reach GitHub.
+- Private GitHub repository `SympathY17/breathmap-web` contains the full source and follow-up fixes. The Codex connector was explicitly authorized for this repository only. Git CLI connectivity subsequently recovered; the local branch now has the existing remote history and can push through the existing authorization.
 - The two frontend publishable settings are configured. The worker credential was saved with Windows encryption for this account; an actual cloud empty-queue poll completed successfully (`processed: 0`).
 - Existing backend, model, runtime records, Softr website and Obsidian files were not migrated or deleted.
 - Supabase Auth Site URL and its exact production `/` and `/reset-password` redirect URLs were saved and read back. Email confirmation was retained; custom SMTP is absent and the user explicitly deferred it.
@@ -55,13 +55,14 @@ The browser account was signed out and removed. Cleanup deleted its two cloud re
 
 The temporary read-only Vite preview and one-use handoff listeners were stopped. Unused magic-link/HTTP/credential-page test paths were removed; the reusable browser helper keeps only prepare, hidden-input test-password setup and scoped cleanup. The normal outbound worker remains online.
 
-The hosted viewport override did not change the measured 1280-pixel viewport. This run therefore does not count as a hosted mobile-size check; earlier local fixture checks and responsive CSS do not replace physical-device acceptance.
+The earlier hosted viewport attempt did not change the measured 1280-pixel viewport. A subsequent run applied the override to the currently visible test tab and verified the actual dimensions. The resulting hosted width checks are recorded below; they still do not replace physical-device acceptance.
 
 ## Remaining acceptance, in order
 
 1. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Email confirmation remains enabled.
 2. Actual phone/device acceptance remains for the user; do not treat desktop or fixture checks as a real-device result.
-3. The additional monitoring date-picker and full reaction/trends flows were checked at component/API boundaries, not all completed through the hosted browser. The browser's date input and a subsequent unsaved-draft dialog prevented completing that particular hosted form; no production date bug was established.
+3. Native print-preview content and a real window/tab-blur interaction remain manual checks. The print action invoked the native flow, which this browser controller could not inspect; its temporary tab was closed. Component tests cover selected print content and blur cancellation, but are not native-dialog evidence.
+4. The user explicitly declined the final irreversible browser deletion and retained that synthetic record for manual acceptance. API deletion passed previously; the browser confirmation was cancelled. Do not delete the retained fixture through a different interface.
 
 No remaining item is marked completed merely because a matching source file exists.
 
@@ -78,3 +79,15 @@ The first expanded lifecycle smoke run passed 127 checks and then failed an imme
 The next run verified the actual removal but exposed a second harness error: selecting `*` from jobs includes server-only lease fields. The check now selects only permitted public columns and independently verifies the cascade as the service role. The final run passed **134 cloud checks**, with no AI calls and successful cleanup: `.tmp/cloud-smoke-9e0d1bd2-29e6-4357-9950-823a633d461c.json`. These checks include actual private-file deletion, origin listing, cache-bypassed denial, both lease outcomes and the running deletion gate. They do not claim exhaustive simultaneous connection or network-failure injection.
 
 Storage POST timeouts have a separate operational limit. The worker retains the running task and pending content-hash journal and stops claiming work. Restart proceeds only after reading a complete matching object; missing or mismatching content requires operator review. It does not assume a timed-out upload was cancelled. See `worker/README.md` for stop/restart guidance.
+
+## Additional hosted forms and responsive acceptance
+
+The production release `4c2bebdfdb2a10bdb58dd7eceaee6cc83bca6352` was exercised with a fresh, confirmed synthetic QA account. A second uploaded XLSX was independently analysed by the real worker without AI: the page displayed 15.03 breaths/min, 5.1 L/min and 11/11 valid model windows.
+
+- A past recording plan retained its date, linked record and edits over refresh. Complete, reopen and skip transitions passed, and the skipped status persisted. A future plan's complete action was disabled. Native keyboard input committed date changes correctly; no production date bug was found.
+- Two distinct analysed records displayed their real metrics and matching model/configuration notice. The first-record diary action selected the correct UUID and date. A saved diary subsequently appeared in the trend chart/table with 23:00–07:00, 8.0 hours in bed, quality 4/5 and sleepiness 2/5.
+- Three practice trials and ten formal trials completed. A test started while viewing 20 October was saved under its actual 28 October completion date. The save acknowledgement prevented saving it again, and today's history retained one result after navigation. Its 1 valid/9 missed outcomes are explicitly labelled automated UI acceptance, not a human reaction measurement. The IAB tab switch did not establish a real blur event, so no hosted blur claim is made.
+- Saved visit notes reopened with only the chosen recording and the selected one-day diary range. Printing invoked the native flow, but its preview could not be read by this controller; this remains manual rather than being counted as a passed print preview.
+- Sixty actual viewport measurements covered twenty views at 320, 390 and 768 pixels: ten principal pages, the remaining wellbeing views and four public Auth views. Every measured viewport matched its requested width, and document width did not exceed it. This checks document overflow, not every touch interaction or physical phone. Evidence: `.tmp/hosted-responsive-measurements.json`, `.tmp/mobile-analysis-390.png`, `.tmp/mobile-monitoring-390.png` and `.tmp/mobile-trends-390.png`.
+
+The user chose to retain this account, its two synthetic recordings and associated test entries for manual acceptance. One recording remains recoverable in the recycle bin; the permanent-delete dialog was cancelled. `.tmp/browser-qa-state.json` records `manual_retention_requested`, and cleanup refuses to proceed while that marker is present. Earlier cleanup reports still describe their own completed runs; they do not imply this retained account was removed.

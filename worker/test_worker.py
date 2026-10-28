@@ -815,6 +815,9 @@ class WorkerTests(unittest.TestCase):
         self.ledger.bind({"id": foreign_record, "user_id": foreign, "input_sha256": INPUT_HASH}, uid(), RESULT_HASH)
         for job_id in [*job_ids, foreign_job]:
             self.ledger.save_job({"id": job_id, "operation": "analyse"}, "completed")
+        for record_id, job_id, scoped_owner in [*[(record_id, job_id, owner) for record_id, job_id in zip(record_ids, job_ids)], (foreign_record, foreign_job, foreign)]:
+            self.ledger.save_attempt({"id": job_id}, {"id": record_id, "user_id": scoped_owner, "input_sha256": INPUT_HASH}, uid())
+            self.ledger.artifact_write(job_id, f"{scoped_owner}/{record_id}/{RESULT_HASH}/overview-{job_id}.json", "published", INPUT_HASH)
         state = {"user_id": owner, "recording_id": record_ids[0], "source_local_id": uid()}
         cloud = CleanupCloud(owner, record_ids, job_ids, foreign)
         with patch.object(helper, "require_state", return_value=(state, {})), patch.object(helper, "LOCAL_LEDGER", self.ledger.path), patch.object(helper, "save_state"):
@@ -823,15 +826,79 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(output["storage_objects_removed"], 4)
         self.assertEqual(output["local_aliases_removed"], 2)
         self.assertEqual(output["local_job_entries_removed"], 2)
+        self.assertEqual(output["local_attempt_entries_removed"], 2)
+        self.assertEqual(output["local_artifact_entries_removed"], 2)
         self.assertTrue(all(value == 0 for value in output["cloud_counts"].values()))
         self.assertTrue(output["source_local_artifacts_retained"])
         for record_id in record_ids:
             self.assertIsNone(self.ledger.binding(record_id))
         for job_id in job_ids:
             self.assertIsNone(self.ledger.job(job_id))
+            self.assertIsNone(self.ledger.attempt(job_id))
+            self.assertEqual(self.ledger.db.execute("SELECT count(*) FROM artifact_writes WHERE job_id=?", (job_id,)).fetchone()[0], 0)
         self.assertIsNotNone(self.ledger.binding(foreign_record))
         self.assertIsNotNone(self.ledger.job(foreign_job))
+        self.assertIsNotNone(self.ledger.attempt(foreign_job))
+        self.assertEqual(self.ledger.db.execute("SELECT count(*) FROM artifact_writes WHERE job_id=?", (foreign_job,)).fetchone()[0], 1)
+        self.assertFalse(self.ledger.db.execute("PRAGMA foreign_key_check").fetchall())
         self.assertTrue(all(len(paths) == 1 and next(iter(paths)).startswith(foreign + "/") for paths in cloud.files.values()))
+
+    def test_browser_cleanup_removes_local_attempt_and_report_for_ui_deleted_cloud_jobs(self):
+        import prepare_browser_qa as helper
+        owner, foreign, deleted_record = uid(), uid(), uid()
+        numeric_job, report_job = uid(), uid()
+        for job_id, operation in ((numeric_job, "analyse"), (report_job, "report")):
+            self.ledger.save_job({"id": job_id, "operation": operation}, "completed")
+            self.ledger.artifact_write(job_id, f"{owner}/{deleted_record}/{RESULT_HASH}/overview-{job_id}.json", "published", INPUT_HASH)
+        self.ledger.save_attempt({"id": numeric_job}, {"id": deleted_record, "user_id": owner, "input_sha256": INPUT_HASH}, uid())
+        cloud = CleanupCloud(owner, [], [], foreign)
+        with patch.object(helper, "require_state", return_value=({"user_id": owner}, {})), patch.object(helper, "LOCAL_LEDGER", self.ledger.path), patch.object(helper, "save_state"):
+            output = helper.cleanup(cloud)
+        self.assertEqual(output["recordings_removed"], 0)
+        self.assertEqual(output["local_job_entries_removed"], 2)
+        self.assertEqual(output["local_attempt_entries_removed"], 1)
+        self.assertEqual(output["local_artifact_entries_removed"], 2)
+        self.assertIsNone(self.ledger.job(numeric_job))
+        self.assertIsNone(self.ledger.job(report_job))
+        self.assertIsNone(self.ledger.attempt(numeric_job))
+        self.assertFalse(self.ledger.db.execute("SELECT * FROM artifact_writes").fetchall())
+
+    def test_browser_cleanup_removes_only_owned_children_orphaned_by_old_fk_off_helper(self):
+        import prepare_browser_qa as helper
+        owner, foreign, record_id, job_id = uid(), uid(), uid(), uid()
+        self.ledger.save_job({"id": job_id, "operation": "analyse"}, "completed")
+        self.ledger.save_attempt({"id": job_id}, {"id": record_id, "user_id": owner, "input_sha256": INPUT_HASH}, uid())
+        self.ledger.artifact_write(job_id, f"{owner}/{record_id}/{RESULT_HASH}/overview-{job_id}.json", "published", INPUT_HASH)
+        self.ledger.db.execute("PRAGMA foreign_keys=OFF")
+        self.ledger.db.execute("DELETE FROM jobs WHERE job_id=?", (job_id,))
+        self.ledger.db.commit()
+        self.ledger.db.execute("PRAGMA foreign_keys=ON")
+        self.assertTrue(self.ledger.db.execute("PRAGMA foreign_key_check").fetchall())
+        cloud = CleanupCloud(owner, [], [], foreign)
+        with patch.object(helper, "require_state", return_value=({"user_id": owner}, {})), patch.object(helper, "LOCAL_LEDGER", self.ledger.path), patch.object(helper, "save_state"):
+            output = helper.cleanup(cloud)
+        self.assertEqual(output["local_job_entries_removed"], 0)
+        self.assertEqual(output["local_attempt_entries_removed"], 1)
+        self.assertEqual(output["local_artifact_entries_removed"], 1)
+        self.assertFalse(self.ledger.db.execute("PRAGMA foreign_key_check").fetchall())
+
+    def test_browser_cleanup_rejects_foreign_attempt_or_journal_before_cloud_deletion(self):
+        import prepare_browser_qa as helper
+        for foreign_link in ("attempt", "journal"):
+            with self.subTest(foreign_link=foreign_link):
+                owner, foreign, record_id, job_id = uid(), uid(), uid(), uid()
+                self.ledger.save_job({"id": job_id, "operation": "analyse"}, "completed")
+                if foreign_link == "attempt":
+                    self.ledger.save_attempt({"id": job_id}, {"id": record_id, "user_id": foreign, "input_sha256": INPUT_HASH}, uid())
+                else:
+                    self.ledger.artifact_write(job_id, f"{foreign}/{record_id}/{RESULT_HASH}/overview-{job_id}.json", "published", INPUT_HASH)
+                cloud = CleanupCloud(owner, [record_id], [job_id], foreign)
+                with patch.object(helper, "require_state", return_value=({"user_id": owner}, {})), patch.object(helper, "LOCAL_LEDGER", self.ledger.path), patch.object(helper, "save_state"):
+                    with self.assertRaisesRegex(WorkerError, "browser_qa_local_scope_changed"):
+                        helper.cleanup(cloud)
+                self.assertFalse(cloud.deleted)
+                self.assertFalse(any(method == "DELETE" for method, path in cloud.requests))
+                self.assertIsNotNone(self.ledger.job(job_id))
 
     def test_browser_cleanup_refuses_pending_work_before_any_delete(self):
         import prepare_browser_qa as helper
@@ -842,6 +909,18 @@ class WorkerTests(unittest.TestCase):
                 helper.cleanup(cloud)
         self.assertFalse(cloud.deleted)
         self.assertFalse(any(method == "DELETE" for method, path in cloud.requests))
+
+    def test_browser_cleanup_refuses_manual_retention_before_cloud_or_local_mutation(self):
+        import prepare_browser_qa as helper
+        owner, foreign = uid(), uid()
+        cloud = CleanupCloud(owner, [uid()], [uid()], foreign)
+        state = {"user_id": owner, "manual_retention_requested": {"reason": "User retained fixtures for manual acceptance"}}
+        with patch.object(helper, "require_state", return_value=(state, {})), patch.object(helper, "save_state") as saved:
+            with self.assertRaisesRegex(WorkerError, "browser_qa_manual_retention_requested"):
+                helper.cleanup(cloud)
+        self.assertFalse(cloud.requests)
+        self.assertFalse(cloud.deleted)
+        saved.assert_not_called()
 
     def test_ai_requires_explicit_per_record_consent(self):
         self.bind()

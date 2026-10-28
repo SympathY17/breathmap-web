@@ -195,6 +195,8 @@ def set_password(admin):
 
 def cleanup(admin):
     state, user = require_state(admin)
+    if state.get("manual_retention_requested"):
+        raise WorkerError("browser_qa_manual_retention_requested")
     owner = state["user_id"]
     owned_jobs = admin.request("GET", "/rest/v1/analysis_jobs?" + urlencode({"user_id": "eq." + owner, "select": "id,status"}))
     if not isinstance(owned_jobs, list):
@@ -206,6 +208,23 @@ def cleanup(admin):
     if not isinstance(owned_records, list):
         raise WorkerError("browser_qa_record_list_invalid")
     record_ids = [identifier(row.get("id")) for row in owned_records]
+    def local_scope(ledger):
+        # Cloud rows may already be gone after a successful UI deletion. The
+        # attempt owner and exact journal prefix retain the synthetic scope.
+        candidates = set(job_ids)
+        candidates.update(row[0] for row in ledger.execute("SELECT job_id FROM attempts WHERE owner_id=?", (owner,)))
+        prefix = owner + "/"
+        candidates.update(row[0] for row in ledger.execute("SELECT job_id FROM artifact_writes WHERE substr(path,1,?)=?", (len(prefix), prefix)))
+        for job_id in candidates:
+            identifier(job_id)
+            if any(row[0] != owner for row in ledger.execute("SELECT owner_id FROM attempts WHERE job_id=?", (job_id,))):
+                raise WorkerError("browser_qa_local_scope_changed")
+            if any(not row[0].startswith(prefix) for row in ledger.execute("SELECT path FROM artifact_writes WHERE job_id=?", (job_id,))):
+                raise WorkerError("browser_qa_local_scope_changed")
+        return candidates
+    # Check the local ownership boundary before any irreversible cloud cleanup.
+    with closing(sqlite3.connect(LOCAL_LEDGER)) as ledger:
+        local_scope(ledger)
     def paths_in(bucket, prefix, depth=0):
         if depth > 5 or not (prefix == owner or prefix.startswith(owner + "/")):
             raise WorkerError("browser_qa_storage_scope_changed")
@@ -255,18 +274,34 @@ def cleanup(admin):
     # All aliases for this marked temporary user, including browser-created
     # records, are removed. Shared cached/numerical source folders stay intact.
     with closing(sqlite3.connect(LOCAL_LEDGER)) as ledger:
+        ledger.execute("PRAGMA foreign_keys=ON")
+        candidates = local_scope(ledger)
+        removed_attempts = ledger.execute("SELECT count(*) FROM attempts WHERE owner_id=?", (owner,)).fetchone()[0]
+        prefix = owner + "/"
+        removed_journals = ledger.execute("SELECT count(*) FROM artifact_writes WHERE substr(path,1,?)=?", (len(prefix), prefix)).fetchone()[0]
         removed_bindings = ledger.execute("DELETE FROM bindings WHERE owner_id=?", (owner,)).rowcount
         removed_jobs = 0
-        for job_id in job_ids:
+        for job_id in candidates:
+            # Foreign-key enforcement handles present parents. Clean only
+            # validated old children whose parents were already removed by an
+            # earlier helper connection that did not enable SQLite FKs.
+            ledger.execute("DELETE FROM artifact_writes WHERE job_id=? AND NOT EXISTS(SELECT 1 FROM jobs WHERE jobs.job_id=artifact_writes.job_id)", (job_id,))
+            ledger.execute("DELETE FROM attempts WHERE job_id=? AND owner_id=? AND NOT EXISTS(SELECT 1 FROM jobs WHERE jobs.job_id=attempts.job_id)", (job_id, owner))
             removed_jobs += ledger.execute("DELETE FROM jobs WHERE job_id=?", (job_id,)).rowcount
+        if (ledger.execute("SELECT count(*) FROM attempts WHERE owner_id=?", (owner,)).fetchone()[0] or
+                ledger.execute("SELECT count(*) FROM artifact_writes WHERE substr(path,1,?)=?", (len(prefix), prefix)).fetchone()[0] or
+                any(ledger.execute("SELECT 1 FROM jobs WHERE job_id=?", (job_id,)).fetchone() for job_id in candidates)):
+            raise WorkerError("browser_qa_local_cleanup_incomplete")
         ledger.commit()
     state.update(cleaned=True, cleaned_at_utc=datetime.now(timezone.utc).isoformat(),
                  cleaned_record_ids=record_ids, cleanup_counts=counts,
-                 local_aliases_removed=removed_bindings, local_job_entries_removed=removed_jobs)
+                 local_aliases_removed=removed_bindings, local_job_entries_removed=removed_jobs,
+                 local_attempt_entries_removed=removed_attempts, local_artifact_entries_removed=removed_journals)
     save_state(state)
     return {"status": "cleaned", "user_id": owner, "storage_objects_removed": removed_objects,
             "recordings_removed": len(record_ids), "cloud_counts": counts,
             "local_aliases_removed": removed_bindings, "local_job_entries_removed": removed_jobs,
+            "local_attempt_entries_removed": removed_attempts, "local_artifact_entries_removed": removed_journals,
             "source_local_artifacts_retained": True, "state_file": str(STATE)}
 
 
