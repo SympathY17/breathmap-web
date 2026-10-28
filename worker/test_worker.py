@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import uuid
+from urllib.parse import urlsplit
 from unittest.mock import patch
 
 from breathmap_worker import Ledger, Processor, SupabaseCloud, WorkerError, process_lock, stamp_report_source, detach_worker_credentials
@@ -133,6 +134,49 @@ class FakeBackend:
     def validate_export(self, local_id, expected_hash, display):
         if expected_hash != RESULT_HASH:
             raise WorkerError("local_result_changed")
+
+
+class CleanupCloud:
+    def __init__(self, owner, record_ids, job_ids, foreign_owner, *, pending=False):
+        self.owner, self.record_ids, self.job_ids = owner, record_ids, job_ids
+        self.deleted, self.pending = False, pending
+        self.requests = []
+        self.files = {
+            "recordings": {f"{owner}/{rid}/input.xlsx" for rid in record_ids} | {f"{foreign_owner}/foreign/input.xlsx"},
+            "analysis-artifacts": {f"{owner}/{rid}/{RESULT_HASH}/overview.json" for rid in record_ids} | {f"{foreign_owner}/foreign/{RESULT_HASH}/overview.json"}}
+    def request(self, method, path, value=None):
+        self.requests.append((method, path))
+        if method == "POST" and path.startswith("/storage/v1/object/list/"):
+            bucket = path.rsplit("/", 1)[-1]
+            prefix = value["prefix"] + "/"
+            children = {}
+            for item in self.files[bucket]:
+                if item.startswith(prefix):
+                    tail = item[len(prefix):]
+                    name, slash, unused = tail.partition("/")
+                    children[name] = {"name": name, "id": None if slash else "object-id"}
+            return [children[name] for name in sorted(children)][value["offset"]:value["offset"] + value["limit"]]
+        if method == "DELETE" and path.startswith("/storage/v1/object/"):
+            bucket = path.rsplit("/", 1)[-1]
+            for item in value["prefixes"]:
+                assert item.startswith(self.owner + "/")
+                self.files[bucket].discard(item)
+            return []
+        if path.startswith("/auth/v1/admin/users/"):
+            assert path.endswith(self.owner)
+            if method == "DELETE":
+                self.deleted = True
+                return {}
+            if self.deleted:
+                raise WorkerError("cloud_http_404")
+        table = urlsplit(path).path.rsplit("/", 1)[-1]
+        if method == "GET" and table == "analysis_jobs" and not self.deleted:
+            return [{"id": job, "status": "queued" if self.pending else "completed"} for job in self.job_ids]
+        if method == "GET" and table == "recordings" and not self.deleted:
+            return [{"id": record} for record in self.record_ids]
+        if method == "GET" and self.deleted:
+            return []
+        raise AssertionError("Unexpected cleanup request")
 
 
 class WorkerTests(unittest.TestCase):
@@ -385,6 +429,44 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaisesRegex(WorkerError, "hidden_password_input_unavailable"):
                 helper.set_password(admin)
         admin.request.assert_not_called()
+
+    def test_browser_cleanup_removes_all_test_records_files_and_aliases_only(self):
+        import prepare_browser_qa as helper
+        owner, foreign = uid(), uid()
+        record_ids, job_ids = [uid(), uid()], [uid(), uid()]
+        for record_id in record_ids:
+            self.ledger.bind({"id": record_id, "user_id": owner, "input_sha256": INPUT_HASH}, uid(), RESULT_HASH)
+        foreign_record, foreign_job = uid(), uid()
+        self.ledger.bind({"id": foreign_record, "user_id": foreign, "input_sha256": INPUT_HASH}, uid(), RESULT_HASH)
+        for job_id in [*job_ids, foreign_job]:
+            self.ledger.save_job({"id": job_id, "operation": "analyse"}, "completed")
+        state = {"user_id": owner, "recording_id": record_ids[0], "source_local_id": uid()}
+        cloud = CleanupCloud(owner, record_ids, job_ids, foreign)
+        with patch.object(helper, "require_state", return_value=(state, {})), patch.object(helper, "LOCAL_LEDGER", self.ledger.path), patch.object(helper, "save_state"):
+            output = helper.cleanup(cloud)
+        self.assertEqual(output["recordings_removed"], 2)
+        self.assertEqual(output["storage_objects_removed"], 4)
+        self.assertEqual(output["local_aliases_removed"], 2)
+        self.assertEqual(output["local_job_entries_removed"], 2)
+        self.assertTrue(all(value == 0 for value in output["cloud_counts"].values()))
+        self.assertTrue(output["source_local_artifacts_retained"])
+        for record_id in record_ids:
+            self.assertIsNone(self.ledger.binding(record_id))
+        for job_id in job_ids:
+            self.assertIsNone(self.ledger.job(job_id))
+        self.assertIsNotNone(self.ledger.binding(foreign_record))
+        self.assertIsNotNone(self.ledger.job(foreign_job))
+        self.assertTrue(all(len(paths) == 1 and next(iter(paths)).startswith(foreign + "/") for paths in cloud.files.values()))
+
+    def test_browser_cleanup_refuses_pending_work_before_any_delete(self):
+        import prepare_browser_qa as helper
+        owner, foreign = uid(), uid()
+        cloud = CleanupCloud(owner, [uid(), uid()], [uid()], foreign, pending=True)
+        with patch.object(helper, "require_state", return_value=({"user_id": owner}, {})), patch.object(helper, "save_state"):
+            with self.assertRaisesRegex(WorkerError, "jobs_must_finish"):
+                helper.cleanup(cloud)
+        self.assertFalse(cloud.deleted)
+        self.assertFalse(any(method == "DELETE" for method, path in cloud.requests))
 
     def test_ai_requires_explicit_per_record_consent(self):
         self.bind()

@@ -556,7 +556,7 @@ export default function Block(){
       {savedRecord ? <section className="progress-panel">
         <span className="progress-symbol"><Check size={38}/></span>
         <h2>{t("Recording saved", "记录已保存")}</h2>
-        <p>{t("Your file and recording details are saved. Analysis starts after the operator approves this recording; refresh its report to check progress.", "文件及采集信息已保存。操作员批准这条记录后开始分析，可刷新记录报告查看进度。")}</p>
+        <p>{t("Your file and recording details are saved. Open this recording and choose Start analysis. Results will appear after the analysis host finishes processing it.", "文件及采集信息已保存。打开这条记录后点击“开始分析”；分析主机处理完成后即可查看结果。")}</p>
         <div className="button-row">
           {savedRecord.id && <NavLink to={links.report} record={savedRecord} className="btn">{t("View recording", "查看记录")}<ArrowRight size={18}/></NavLink>}
           <NavLink to={links.recordings} className="btn secondary">{t("Back to recordings", "返回呼吸记录")}</NavLink>
@@ -585,7 +585,7 @@ export default function Block(){
           <hr/>
           <div><FileText size={20}/><p>{t("Upload one original XLSX recording with both worksheets. Current file limit: 50 MB.", "每次上传一份包含两张工作表的原始 XLSX 记录，当前单文件上限为 50 MB。")}</p></div>
           <div><RotateCcw size={20}/><p>{t("Reopen your recording from your personal dashboard at any time.", "保存后，可以随时回首页重新查看。")}</p></div>
-          <div><Activity size={20}/><p>{t("Approved recordings are processed by the analysis service. Saving a file does not mean its analysis is complete.", "已批准的记录将由分析服务处理。文件保存成功不代表分析已经完成。")}</p></div>
+          <div><Activity size={20}/><p>{t("Saving a file does not start analysis. Open its report to request analysis; results appear after the analysis host finishes.", "保存文件不会自动开始分析。请打开记录报告发起分析，分析主机处理完成后将显示结果。")}</p></div>
         </aside>
       </div>}
     </>}

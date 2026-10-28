@@ -6,6 +6,10 @@ import { useAuth } from './lib/user';
 import { PrivateFileLink } from './components/private-file-link';
 
 const LABELS: Record<string, [string, string]> = { normal: ['Normal breathing', '正常呼吸'], cont: ['Normal breathing', '正常呼吸'], continuous: ['Normal breathing', '正常呼吸'], no_inhale: ['Inspiratory interruption', '吸气中断'], no_exhale: ['Expiratory interruption', '呼气中断'], pause: ['No breathing', '无呼吸'], invalid: ['Unavailable', '不可用'], unknown: ['Uncertain', '不确定'], '正常呼吸': ['Normal breathing', '正常呼吸'], '呼吸暂停': ['No breathing', '无呼吸'], '呼吸障碍（未吸气）': ['Inspiratory interruption', '吸气中断'], '呼吸障碍（未呼气）': ['Expiratory interruption', '呼气中断'], '无法判断': ['Uncertain', '不确定'] };
+function localRecordingTime(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+}
 function WavePlot({ wave, column, title, unit }: { wave: Waveform; column: string; title: string; unit: string }) {
   const segments = waveSegments(wave, column), all = segments.flat();
   if (!all.length) return <div><strong>{title}</strong><p className="result-note">—</p></div>;
@@ -42,11 +46,17 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   const [wave, setWave] = useState<Waveform | null>(null), [start, setStart] = useState('0'), [end, setEnd] = useState('30');
   const [kind, setKind] = useState<'model' | 'statistics' | 'attention'>('model'), [page, setPage] = useState(0), [selected, setSelected] = useState('');
   const [note, setNote] = useState(''), [saved, setSaved] = useState('');
+  const [editingDetails, setEditingDetails] = useState(false), [savingDetails, setSavingDetails] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState({ title: '', recordedAt: '', details: '' });
+  const [detailsError, setDetailsError] = useState(''), [detailsSaved, setDetailsSaved] = useState('');
+  const detailsLock = useRef(false), detailsWriteVersion = useRef(0);
+  const detailsDateOrigin = useRef({ stored: '', input: '' });
   const [evidenceView, setEvidenceView] = useState<{ id: string; values: any } | null>(null);
   const overviewHash = useRef(''), appliedWaveJob = useRef('');
   const alive = useRef(true), previousResult = useRef<string | null>(null);
   const refresh = useCallback(async () => {
     if (!supabase || !user) return;
+    const metadataVersion = detailsWriteVersion.current;
     const [r, a, j, h] = await Promise.all([
       supabase.from('recordings').select('id,user_id,title,notes,details,file_path,file_name,file_size,recorded_at,uploaded_at,trashed_at').eq('id', recordingId).is('trashed_at', null).maybeSingle(),
       supabase.from('analysis_results').select('*').eq('recording_id', recordingId).maybeSingle(),
@@ -56,7 +66,8 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     if (!alive.current) return;
     const issue = r.error ?? a.error ?? j.error;
     if (issue) { setError(t('Your record could not be refreshed. Please try again.', '暂时无法刷新记录，请重试。')); setLoading(false); return; }
-    setRecord(r.data); setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
+    if (metadataVersion === detailsWriteVersion.current) setRecord(r.data);
+    setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
     if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setConsent(false); setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; }
     previousResult.current = a.data?.result_sha256 ?? null;
   }, [recordingId, user?.id, lang]);
@@ -104,6 +115,37 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
       setSaved(t('Notes saved.', '备注已保存。'));
     } catch { setError(t('Your notes could not be saved. Check that the recording is still available and try again.', '备注未能保存，请确认记录仍然存在后重试。')); }
     finally { setBusy(false); }
+  }
+  function beginDetailsEdit() {
+    if (!record || detailsLock.current) return;
+    const input = localRecordingTime(record.recorded_at);
+    detailsDateOrigin.current = { stored: record.recorded_at, input };
+    setDetailsDraft({ title: record.title ?? '', recordedAt: input, details: record.details ?? '' });
+    setDetailsError(''); setDetailsSaved(''); setEditingDetails(true);
+  }
+  async function saveDetails(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !user || detailsLock.current) return;
+    setDetailsError(''); setDetailsSaved('');
+    const title = detailsDraft.title.trim(), details = detailsDraft.details.trim();
+    if (!title || title.length > 200) { setDetailsError(t('Enter a recording title of 1–200 characters.', '请填写 1–200 字的记录名称。')); return; }
+    if (details.length > 10000) { setDetailsError(t('Keep collection details within 10,000 characters.', '采集情况请控制在 10,000 字以内。')); return; }
+    const date = detailsDraft.recordedAt === detailsDateOrigin.current.input ? new Date(detailsDateOrigin.current.stored) : new Date(detailsDraft.recordedAt);
+    if (!detailsDraft.recordedAt || !Number.isFinite(date.getTime()) || date.getTime() > Date.now() + 60000) { setDetailsError(t('Choose a valid recording date and time that is not in the future.', '请选择有效的采集日期和时间，不能晚于当前时间。')); return; }
+    const values = { title, recorded_at: date.toISOString(), details };
+    detailsLock.current = true; setSavingDetails(true); detailsWriteVersion.current++;
+    try {
+      const response = await supabase.from('recordings').update(values).eq('id', recordingId).eq('user_id', user.id).is('trashed_at', null).select('id,title,recorded_at,details').single();
+      if (response.error || !response.data || response.data.id !== recordingId) throw new Error('not_saved');
+      detailsWriteVersion.current++;
+      if (!alive.current) return;
+      setRecord((current: any) => current?.id === recordingId ? { ...current, ...response.data } : current);
+      setEditingDetails(false); setDetailsSaved(t('Recording details saved.', '记录信息已保存。'));
+      try { await refresh(); }
+      catch { if (alive.current) setDetailsSaved(t('Recording details saved. Refresh to reload the latest copy.', '记录信息已保存，请刷新页面读取最新内容。')); }
+    } catch {
+      if (alive.current) setDetailsError(t('Your changes could not be saved. Check that the recording is still available, then try again.', '修改未能保存，请确认记录仍然存在后重试。'));
+    } finally { detailsLock.current = false; if (alive.current) setSavingDetails(false); }
   }
   function focusRow(row: any) { setSelected(row.window_id); setStart(String(row.start_s)); setEnd(String(row.end_s)); document.getElementById('waveforms')?.scrollIntoView({ behavior: 'smooth' }); }
   function focusEvidence(id: string, evidence?: any) {
@@ -154,7 +196,21 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
       </section>
     </>}
     {evidenceView && <section className="result-card" aria-live="polite"><h2>{t('Supporting evidence', '支持证据')} · {evidenceView.id}</h2><dl>{Object.entries(evidenceView.values).map(([field, value]) => <div className="message-item" key={field}><dt>{field}</dt><dd>{value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section>}
-    <section className="result-card"><h2>{t('Recording information', '记录信息')}</h2><p className="result-note">{t('Collection details', '采集情况')}</p><p>{record.details || t('Not provided', '未填写')}</p><p className="result-note">{t('Original recording', '原始记录')}</p><p>{record.file_name}</p><div className="result-actions"><PrivateFileLink file={{ path: record.file_path, filename: record.file_name }} recordId={recordingId} t={t} /><a href="/recordings">{t('Manage recording details', '管理记录信息')}</a><a href={`/wellbeing?view=trends&ctxRecord=${recordingId}`}>{t('Compare recordings', '比较记录')}</a><a href={`/wellbeing?view=visits&ctxRecord=${recordingId}`}>{t('Prepare visit notes', '整理就诊资料')}</a></div></section>
+    <section className="result-card"><h2>{t('Recording information', '记录信息')}</h2>
+      {editingDetails ? <form onSubmit={event => void saveDetails(event)} aria-busy={savingDetails}>
+        <fieldset disabled={savingDetails} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          <div style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
+            <label>{t('Recording title', '记录名称')}<input required maxLength={200} value={detailsDraft.title} onChange={event => setDetailsDraft(current => ({ ...current, title: event.target.value }))} style={{ display: 'block', width: '100%', marginTop: 6 }} /></label>
+            <label>{t('Recorded date and time', '采集日期和时间')}<input required type="datetime-local" value={detailsDraft.recordedAt} onChange={event => setDetailsDraft(current => ({ ...current, recordedAt: event.target.value }))} style={{ display: 'block', marginTop: 6 }} /></label>
+            <label>{t('Collection details (optional)', '采集情况（可选）')}<textarea rows={4} maxLength={10000} value={detailsDraft.details} onChange={event => setDetailsDraft(current => ({ ...current, details: event.target.value }))} style={{ display: 'block', marginTop: 6 }} /></label>
+          </div>
+          <div className="result-actions"><button type="submit" className="solid-button">{savingDetails ? t('Saving…', '正在保存…') : t('Save recording details', '保存记录信息')}</button><button type="button" onClick={() => { setEditingDetails(false); setDetailsError(''); setDetailsSaved(''); }}>{t('Cancel', '取消')}</button></div>
+        </fieldset>
+        {detailsError && <p className="result-error" role="alert">{detailsError}</p>}
+      </form> : <><p className="result-note">{t('Collection details', '采集情况')}</p><p>{record.details || t('Not provided', '未填写')}</p><div className="result-actions"><button type="button" onClick={beginDetailsEdit}>{t('Edit recording details', '编辑记录信息')}</button></div></>}
+      {detailsSaved && <p className="result-note" role="status">{detailsSaved}</p>}
+      <p className="result-note">{t('Original recording', '原始记录')}</p><p>{record.file_name}</p><div className="result-actions"><PrivateFileLink file={{ path: record.file_path, filename: record.file_name }} recordId={recordingId} t={t} /><a href={`/wellbeing?view=trends&ctxRecord=${recordingId}`}>{t('Compare recordings', '比较记录')}</a><a href={`/wellbeing?view=visits&ctxRecord=${recordingId}`}>{t('Prepare visit notes', '整理就诊资料')}</a></div>
+    </section>
     <section className="result-card"><h2>{t('Your notes', '记录备注')}</h2><textarea aria-label={t('Recording notes', '记录备注')} rows={3} maxLength={10000} value={note} onChange={e => setNote(e.target.value)} /><div className="result-actions"><button disabled={busy} onClick={() => void saveNotes()}>{t('Save notes', '保存备注')}</button><button onClick={() => void refresh()} disabled={busy}><RefreshCw size={14} /> {t('Refresh', '刷新')}</button>{saved && <span role="status">{saved}</span>}</div></section>
     <p className="result-note">{t('BreathMap supports recording review, not medical diagnosis. No result or missing result confirms a medical condition.', 'BreathMap 用于记录查看，而非医疗诊断；分析结果及结果缺失均不能用于确诊。')}</p>
   </main>;

@@ -6,6 +6,7 @@ The action link is never written to a file. The link action requires
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import datetime, timezone
 import getpass
 import hashlib
@@ -32,6 +33,7 @@ PRIOR_RUN = ROOT / ".tmp" / "cloud-smoke-fbf48f74-5785-4b5b-897c-13676ee299d8.js
 TARGET = "https://breathmap-sympathy.netlify.app/"
 KNOWN_INPUT = "88237b14ec805f516ef041dac422a8eac0158b7bca1212dd22778aef122f2db1"
 MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+LOCAL_LEDGER = Path("E:/breathmap/state/supabase-web/worker.sqlite")
 
 
 def save_state(state):
@@ -64,8 +66,8 @@ def cached_source():
         identifier(owner)
     if not owners or not re.fullmatch(r"[0-9a-f]{64}", str(expected_result)):
         raise WorkerError("verified_synthetic_source_unavailable")
-    path = Path("E:/breathmap/state/supabase-web/worker.sqlite")
-    with sqlite3.connect(path) as ledger:
+    path = LOCAL_LEDGER
+    with closing(sqlite3.connect(path)) as ledger:
         placeholders = ",".join("?" for unused in owners)
         row = ledger.execute("SELECT local_id FROM bindings WHERE owner_id IN (" + placeholders + ") AND input_sha256=? AND result_sha256=? LIMIT 1", (*owners, KNOWN_INPUT, expected_result)).fetchone()
     if not row:
@@ -310,8 +312,18 @@ def set_password(admin):
 def cleanup(admin):
     state, user = require_state(admin)
     owner = state["user_id"]
+    owned_jobs = admin.request("GET", "/rest/v1/analysis_jobs?" + urlencode({"user_id": "eq." + owner, "select": "id,status"}))
+    if not isinstance(owned_jobs, list):
+        raise WorkerError("browser_qa_job_list_invalid")
+    if any(row.get("status") in {"queued", "running"} for row in owned_jobs):
+        raise WorkerError("browser_qa_jobs_must_finish_before_cleanup")
+    job_ids = [identifier(row.get("id")) for row in owned_jobs]
+    owned_records = admin.request("GET", "/rest/v1/recordings?" + urlencode({"user_id": "eq." + owner, "select": "id"}))
+    if not isinstance(owned_records, list):
+        raise WorkerError("browser_qa_record_list_invalid")
+    record_ids = [identifier(row.get("id")) for row in owned_records]
     def paths_in(bucket, prefix, depth=0):
-        if depth > 5 or not prefix.startswith(owner):
+        if depth > 5 or not (prefix == owner or prefix.startswith(owner + "/")):
             raise WorkerError("browser_qa_storage_scope_changed")
         paths, offset = [], 0
         while True:
@@ -337,14 +349,40 @@ def cleanup(admin):
         for offset in range(0, len(objects), 100):
             admin.request("DELETE", "/storage/v1/object/" + bucket, {"prefixes": objects[offset:offset + 100]})
         removed_objects += len(objects)
+        if paths_in(bucket, owner):
+            raise WorkerError("browser_qa_storage_cleanup_incomplete")
     admin.request("DELETE", "/auth/v1/admin/users/" + owner, {"should_soft_delete": False})
-    # The new browser alias is removed; the verified source folder is retained.
-    with sqlite3.connect("E:/breathmap/state/supabase-web/worker.sqlite") as ledger:
-        ledger.execute("DELETE FROM bindings WHERE cloud_id=? AND owner_id=? AND input_sha256=? AND local_id=?",
-                       (state["recording_id"], owner, KNOWN_INPUT, state["source_local_id"]))
-    state.update(cleaned=True, cleaned_at_utc=datetime.now(timezone.utc).isoformat())
+    counts = {}
+    for table in ("profiles", "recordings", "diary", "monitoring", "routines", "visits", "reactions", "analysis_jobs", "analysis_results"):
+        field = "id" if table == "profiles" else "user_id"
+        primary = "recording_id" if table == "analysis_results" else "id"
+        rows = admin.request("GET", "/rest/v1/" + table + "?" + urlencode({field: "eq." + owner, "select": primary}))
+        if not isinstance(rows, list) or rows:
+            raise WorkerError("browser_qa_cloud_cleanup_incomplete")
+        counts[table] = 0
+    try:
+        admin.request("GET", "/auth/v1/admin/users/" + owner)
+    except WorkerError as error:
+        if error.code != "cloud_http_404":
+            raise
+    else:
+        raise WorkerError("browser_qa_auth_cleanup_incomplete")
+    counts["auth_users"] = counts["storage_objects"] = 0
+    # All aliases for this marked temporary user, including browser-created
+    # records, are removed. Shared cached/numerical source folders stay intact.
+    with closing(sqlite3.connect(LOCAL_LEDGER)) as ledger:
+        removed_bindings = ledger.execute("DELETE FROM bindings WHERE owner_id=?", (owner,)).rowcount
+        removed_jobs = 0
+        for job_id in job_ids:
+            removed_jobs += ledger.execute("DELETE FROM jobs WHERE job_id=?", (job_id,)).rowcount
+        ledger.commit()
+    state.update(cleaned=True, cleaned_at_utc=datetime.now(timezone.utc).isoformat(),
+                 cleaned_record_ids=record_ids, cleanup_counts=counts,
+                 local_aliases_removed=removed_bindings, local_job_entries_removed=removed_jobs)
     save_state(state)
     return {"status": "cleaned", "user_id": owner, "storage_objects_removed": removed_objects,
+            "recordings_removed": len(record_ids), "cloud_counts": counts,
+            "local_aliases_removed": removed_bindings, "local_job_entries_removed": removed_jobs,
             "source_local_artifacts_retained": True, "state_file": str(STATE)}
 
 
