@@ -1,0 +1,302 @@
+[
+  {
+    "page": "analysis",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Approved recordings can receive saved analysis metrics, classifications and reports. Interactive waveform access and AI chat are not connected yet. Unavailable results do not indicate normal breathing.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "home",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "learn",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "preferences",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "recordings",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Approved recordings can receive saved analysis metrics, classifications and reports. Interactive waveform access and AI chat are not connected yet. Unavailable results do not indicate normal breathing.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "report",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Approved recordings can receive saved analysis metrics, classifications and reports. Interactive waveform access and AI chat are not connected yet. Unavailable results do not indicate normal breathing.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "security",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "trash",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "upload",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Approved recordings can receive saved analysis metrics, classifications and reports. Interactive waveform access and AI chat are not connected yet. Unavailable results do not indicate normal breathing.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  },
+  {
+    "page": "wellbeing",
+    "pairs": [
+      {
+        "old_en": "Your account is managed by Softr's authentication service.",
+        "new_en": "Your account is managed by Supabase Auth.",
+        "new_zh": "你的账号由 Supabase Auth 管理。"
+      },
+      {
+        "old_en": "Uploaded XLSX files are stored through Softr's file storage. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_en": "Uploaded XLSX files are stored in a private Supabase Storage bucket. Recording details and notes are saved in the BreathMap database and linked to your account.",
+        "new_zh": "上传的 XLSX 文件保存在 Supabase Storage 私有存储空间中。采集信息与备注保存在 BreathMap 数据库中，并关联你的账号。"
+      },
+      {
+        "old_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the saved database record and cannot be undone in BreathMap; deletion of stored file copies and platform backups is not guaranteed by this action.",
+        "new_en": "Moving a recording to the recycle bin allows it to be restored. Permanent deletion removes the cloud database record and its stored files and cannot be undone in BreathMap. This action does not guarantee deletion of analysis copies on the local host or platform backups.",
+        "new_zh": "移入回收站的记录可以恢复。彻底删除会移除云端数据库记录及其存储文件，无法在 BreathMap 中撤销。该操作不保证清除分析主机上的本地分析副本或平台备份。"
+      },
+      {
+        "old_en": "This version supports account access, XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; it does not start respiratory analysis.",
+        "new_en": "BreathMap supports account access, private XLSX storage, recording details, notes, retrieval and recycle-bin actions. Uploading a file saves it; analysis must be requested separately.",
+        "new_zh": "BreathMap 支持账号访问、XLSX 私有存储、采集信息、备注、记录回顾及回收站操作。上传文件只会保存文件，分析需另行提交请求。"
+      },
+      {
+        "old_en": "Respiratory metrics, waveform analysis, classifications, reports and AI chat are not connected. Unavailable results do not indicate that a recording is normal.",
+        "new_en": "When the analysis host is available, submitted analysis tasks can provide saved metrics, classifications, analysis windows and interactive waveforms. AI reports and questions require separate consent. Unavailable results do not indicate normal breathing.",
+        "new_zh": "分析主机可用时，提交的分析任务可以生成已保存的指标、分类、分析窗口及可交互波形。AI 报告与问答需另行授权。暂无分析结果不代表呼吸正常。"
+      }
+    ]
+  }
+]

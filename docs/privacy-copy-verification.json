@@ -1,0 +1,95 @@
+{
+  "checks": [
+    {
+      "page": "analysis",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "home",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "learn",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "preferences",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "recordings",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "report",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "security",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "trash",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "upload",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    },
+    {
+      "page": "wellbeing",
+      "css_unchanged": true,
+      "supabase_auth_pair": true,
+      "private_storage_pair": true,
+      "old_softr_account_copy_absent": true,
+      "separate_ai_consent": true,
+      "local_retention_explicit": true
+    }
+  ],
+  "typecheck": "passed"
+}

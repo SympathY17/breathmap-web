@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.netlify/
+.env
+.env.*
+!.env.example
+.tmp/
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite-*
+*.log
+*.secret
+*.enc
+worker/runtime/
+supabase/.temp/

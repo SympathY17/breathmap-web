@@ -1,0 +1,140 @@
+{
+  "source_state": "Prepared local Softr candidate; cloud not re-read",
+  "pages": [
+    {
+      "page": "home",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\home.tsx",
+      "source_sha256": "29f395a18dbb84c72df42c8a8758fa10780c186f4aaff602afaa791cf0675694",
+      "target": "src/pages/home.tsx",
+      "copied_sha256": "3b9a62b8b93b5b32a1e4d3423bf9d3e10ea706c8808b2ac1f3790f4909185565",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "recordings",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\recordings.tsx",
+      "source_sha256": "47903dbe4410df4ce6bd8662a106c4ee3c84935bbfb07fa31de81514f8f96d14",
+      "target": "src/pages/recordings.tsx",
+      "copied_sha256": "23a40a6d8deacaf034ce8be68324d00a772a22958db504b3b44c273f1ac30c9e",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Preserve explicit unable-to-analyse and analysis-error states in recording-list labels.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "upload",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\upload.tsx",
+      "source_sha256": "f31fa296371253f48a1efe86a5b9fed2c03b04640d96a54f3d0cd3772cded7a0",
+      "target": "src/pages/upload.tsx",
+      "copied_sha256": "190bb2184ca7d8b0d27f7e2e70c1198fc40cfbae5d9c1165f5d911ecc0e3f78f",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Preserve explicit unable-to-analyse and analysis-error states in recording-list labels.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "report",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\report.tsx",
+      "source_sha256": "5d00bffc9295eeaa0d9c757a9af3509b88b166ce3e920d01b182ac71e7fd1082",
+      "target": "src/pages/report.tsx",
+      "copied_sha256": "12f13b729122bbc076d873cec07f8f73efa994408425e43671090698b0a48681",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Preserve explicit unable-to-analyse and analysis-error states in recording-list labels.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "analysis",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\analysis.tsx",
+      "source_sha256": "a9618ff5979f6b5c6eec933ce366d1478ad50269ce9dbb263d59ca900b0f0eae",
+      "target": "src/pages/analysis.tsx",
+      "copied_sha256": "93809aba703e81f9daf9abf57ab25c0c352109703e8e706d72c5ee4de008ea4f",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Preserve explicit unable-to-analyse and analysis-error states in recording-list labels.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "trash",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\trash.tsx",
+      "source_sha256": "b60515bab62a84ff3b249bf308d707a2e11bd526e889b971fe73bcae227ff2a3",
+      "target": "src/pages/trash.tsx",
+      "copied_sha256": "9a78d788ab10562380d9bbf531ad6ba1a4ac9a3c71557364826ba6e18aa2a683",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "preferences",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\preferences.tsx",
+      "source_sha256": "89e9344d8c396ecc6f0d2a89939aeb6b85dcfbd6d85056b3b1192614073e8baf",
+      "target": "src/pages/preferences.tsx",
+      "copied_sha256": "7a8cbcade4ebf42b7bd6bd314b80d1b42598125ae27e5fef87cb9fa30e027537",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "security",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\security.tsx",
+      "source_sha256": "06e7fba9623b35b27d66afe3cd221104e04330613b3cc2d56c886f636024cf61",
+      "target": "src/pages/security.tsx",
+      "copied_sha256": "774af4621c8aa90ae1cde6bfeb1acdcbd98545f62795d3d8f30e9d438425b26d",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "learn",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\learn.tsx",
+      "source_sha256": "170c41cea7baaa6b6a408b645cbf443f2a37618b2d2f011d2cc3180826f19acf",
+      "target": "src/pages/learn.tsx",
+      "copied_sha256": "f938ee33495f415c2cc54c999eda5f0cf575add971941c87a3d0283dd6d067df",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    },
+    {
+      "page": "wellbeing",
+      "source": "E:\\Codex Data\\学校课程\\BreathMap_local_20261027\\integration\\implementation-20261028\\after\\wellbeing.tsx",
+      "source_sha256": "84dbac7ff2d89cf66b86003a7373386b81abf1280c50bd0d4fa0877ff7e587e1",
+      "target": "src/pages/wellbeing.tsx",
+      "copied_sha256": "ef01e5cfbf660b719bd27d4689da1272063f7d897b68db6e72e1646036cfac5b",
+      "edits": [
+        "Preserve private upload path, record UUID, file size and SHA256 in attachment.",
+        "Update authentication provenance comment.",
+        "Wrap two home-navigation click handlers so React events are not interpreted as date arguments.",
+        "Update five privacy/account/terms pairs for Supabase private storage, available-host analysis and separate AI consent, cloud deletion versus retained local/backup copies.",
+        "Delegate FileLink to an authenticated click-time private download, avoiding expired cached signed URLs."
+      ]
+    }
+  ]
+}

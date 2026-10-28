@@ -1,0 +1,12 @@
+:root { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: #163b3d; background: #f1f9f7; font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input, textarea, select { font: inherit; }
+a { color: #0b5c59; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid #338781; outline-offset: 3px; }
+.app-loading, .setup-message { max-width: 850px; margin: 10vh auto; padding: 32px; }
+.dialog-overlay { position: fixed; inset: 0; z-index: 100; background: #112b3166; }
+.dialog-content { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 101; max-height: 90dvh; width: min(94vw, 640px); overflow: auto; border: 1px solid #c9dada; border-radius: 20px; padding: 28px; background: #fff; box-shadow: 0 20px 100px #143d3b33; }
+.dialog-close { position: absolute; right: 15px; top: 15px; width: 32px; height: 32px; border: 0; background: transparent; color: #164743; cursor: pointer; font-size: 24px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
