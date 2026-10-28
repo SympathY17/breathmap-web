@@ -11,7 +11,7 @@ type DataPage = { items: DataRecord[]; total: number };
 type LoadState = { owner: string; status: "pending" | "success" | "error"; pages: DataPage[]; hasMore: boolean; fetchingMore: boolean; error?: Error };
 
 export const TABLE_FIELDS: Record<TableName, Record<string, string>> = {
-  recordings: { title: "title", notes: "notes", details: "details", recordedAt: "recorded_at", uploadedAt: "uploaded_at", trashedAt: "trashed_at" },
+  recordings: { title: "title", notes: "notes", details: "details", recordedAt: "recorded_at", uploadedAt: "uploaded_at", trashedAt: "trashed_at", deletionStartedAt: "deletion_started_at" },
   profiles: { name: "name", relaxPreferences: "relax_preferences" },
   diary: { title: "title", date: "date", bedAt: "bed_at", wakeAt: "wake_at", awakeningCount: "awakening_count", sleepQuality: "sleep_quality", daySleepiness: "day_sleepiness", caffeineNote: "caffeine_note", notes: "notes", recordings: "recordings" },
   monitoring: { title: "title", scheduledAt: "scheduled_at", status: "status", notes: "notes", recording: "recording_id" },
@@ -213,6 +213,7 @@ export function writableFields(table: TableName, input: Record<string, any>, sel
   const output: Record<string, any> = {};
   for (const [field, value] of Object.entries(input)) {
     if (["owner", "user", "file"].includes(field) || table === "recordings" && ["status", "analysisSummary", "uploadedAt"].includes(field)) continue;
+    if (table === "recordings" && field === "deletionStartedAt") throw new Error("Deletion state is managed by the server.");
     if (selection && !Object.hasOwn(selection, field)) throw new Error("This field cannot be changed from this form.");
     const target = TABLE_FIELDS[table][field];
     if (!target || field === "uploadedAt") throw new Error("Unsupported writable field.");
@@ -335,24 +336,48 @@ export function useRecordUpdate({ from, fields }: { from: TableName; fields?: Se
   return { enabled: !!supabase && !!user?.id, isPending, mutateAsync };
 }
 
-async function removeStoragePrefix(bucket: string, prefix: string) {
-  const client = requireSupabase();
+async function listStoragePrefix(client: ReturnType<typeof requireSupabase>, bucket: string, prefix: string) {
   const paths: string[] = [];
   async function list(folder: string, depth = 0) {
     if (depth > 5) throw new Error("Unexpected file layout; the record was kept in the recycle bin.");
     for (let offset = 0; ; offset += 100) {
       const response = await client.storage.from(bucket).list(folder, { limit: 100, offset });
       checkFailure(response.error);
-      for (const item of response.data ?? []) {
+      if (!Array.isArray(response.data)) throw new Error("File cleanup could not be confirmed. Retry from the recycle bin.");
+      for (const item of response.data) {
         if (!item.name || item.name.includes("/") || [".", ".."].includes(item.name)) throw new Error("Invalid stored file reference.");
         const path = `${folder}/${item.name}`;
         if (item.id) paths.push(path); else await list(path, depth + 1);
       }
-      if ((response.data ?? []).length < 100) break;
+      if (response.data.length < 100) break;
     }
   }
   await list(prefix);
+  return paths;
+}
+async function removeStoragePrefix(client: ReturnType<typeof requireSupabase>, bucket: string, prefix: string) {
+  const paths = await listStoragePrefix(client, bucket, prefix);
   for (let offset = 0; offset < paths.length; offset += 100) checkFailure((await client.storage.from(bucket).remove(paths.slice(offset, offset + 100))).error);
+}
+export async function deleteRecordingWithLifecycle(client: ReturnType<typeof requireSupabase>, recordId: string, userId: string) {
+  if (!UUID.test(recordId) || !UUID.test(userId)) throw new Error("Invalid recording reference.");
+  // The server freezes restore/edit and quiesces jobs before any file removal.
+  // An uncertain acknowledgement is retried through the same idempotent RPC.
+  const started = await client.rpc("begin_recording_deletion", { p_recording_id: recordId });
+  checkFailure(started.error);
+  const record = Array.isArray(started.data) ? started.data[0] : started.data;
+  if (!record || record.id !== recordId || record.file_path !== `${userId}/${recordId}/input.xlsx` || typeof record.deletion_started_at !== "string" || !Number.isFinite(Date.parse(record.deletion_started_at))) throw new Error("Deletion could not be confirmed. Retry from the recycle bin.");
+  const prefix = `${userId}/${recordId}`;
+  await removeStoragePrefix(client, "analysis-artifacts", prefix);
+  checkFailure((await client.storage.from(BUCKET).remove([record.file_path])).error);
+  // Storage DELETE can acknowledge HTTP 200 while RLS filters every object.
+  // Read both prefixes from the origin listing API before dropping metadata;
+  // cached download URLs and an empty removal array cannot prove absence.
+  const remaining = await Promise.all([listStoragePrefix(client, "analysis-artifacts", prefix), listStoragePrefix(client, BUCKET, prefix)]);
+  if (remaining.some(paths => paths.length)) throw new Error("File cleanup could not be confirmed. Retry from the recycle bin.");
+  const response = await client.from("recordings").delete().eq("id", recordId).eq("user_id", userId).not("trashed_at", "is", null).not("deletion_started_at", "is", null).select("id").single();
+  checkFailure(response.error);
+  if (response.data?.id !== recordId) throw new Error("The final deletion could not be confirmed. Refresh the recycle bin.");
 }
 export function useRecordDelete({ from }: { from: TableName }) {
   const user = useCurrentUser();
@@ -364,16 +389,13 @@ export function useRecordDelete({ from }: { from: TableName }) {
     try {
       if (from !== "recordings" || !UUID.test(recordId ?? "")) throw new Error("Unsupported deletion.");
       const identity = await verifiedIdentity(user?.id ?? "");
-      const client = requireSupabase();
-      const record = await client.from("recordings").select("id,trashed_at,file_path").eq("id", recordId).eq("user_id", identity.id).single();
-      checkFailure(record.error);
-      if (!record.data.trashed_at || record.data.file_path !== `${identity.id}/${recordId}/input.xlsx`) throw new Error("Move this recording to the recycle bin before deleting it.");
-      await removeStoragePrefix("analysis-artifacts", `${identity.id}/${recordId}`);
-      checkFailure((await client.storage.from(BUCKET).remove([record.data.file_path])).error);
-      const response = await client.from(from).delete().eq("id", recordId).eq("user_id", identity.id).not("trashed_at", "is", null).select("id").single();
-      checkFailure(response.error);
-      notify(from);
-    } finally { lock.current = false; setPending(false); }
+      await deleteRecordingWithLifecycle(requireSupabase(), recordId, identity.id);
+    } finally {
+      // Reload even after cleanup failure or a lost RPC acknowledgement, so a
+      // persisted deletion marker disables Restore and exposes a safe retry.
+      if (from === "recordings") notify(from);
+      lock.current = false; setPending(false);
+    }
   };
   return { enabled: !!supabase && !!user?.id, isPending, mutateAsync };
 }

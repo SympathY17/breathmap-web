@@ -5,7 +5,7 @@
  */
 import { PGlite } from '@electric-sql/pglite';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 const db = new PGlite();
 const checks = [];
@@ -38,11 +38,17 @@ async function denied(work, message = '') {
 async function enqueue(user, recording, operation, payload, key) {
   return role('authenticated', user, () => scalar('select public.request_analysis_job($1,$2,$3::jsonb,$4)', [recording, operation, JSON.stringify(payload), key]));
 }
+async function beginDeletion(user, recording) {
+  return role('authenticated', user, () => scalar('select public.begin_recording_deletion($1)', [recording]));
+}
 async function claim(worker = 'local-worker') {
   return role('service_role', null, () => rows('select * from public.claim_analysis_job($1)', [worker]));
 }
 async function finish(job, result = {}, projection = null, error = null) {
   return role('service_role', null, () => scalar('select public.finish_analysis_job($1,$2,$3::jsonb,$4::jsonb,$5)', [job.id, job.lease_token, JSON.stringify(result), projection === null ? null : JSON.stringify(projection), error]));
+}
+async function fence(job, worker = 'local-worker') {
+  return role('service_role', null, () => rows('select * from public.fence_worker_job($1,$2)', [job.id, worker]));
 }
 const projection = hash => ({
   result_sha256: hash,
@@ -53,7 +59,7 @@ const projection = hash => ({
 });
 
 try {
-  await db.exec(`
+  const bootstrap = `
     create role anon;
     create role authenticated;
     create role service_role bypassrls;
@@ -74,10 +80,26 @@ try {
     $$;
     -- Reproduce broad Supabase function defaults to catch missing explicit revokes.
     alter default privileges in schema public grant execute on functions to anon,authenticated,service_role;
-  `);
+  `;
+  await db.exec(bootstrap);
   await db.query('insert into auth.users(id,email) values($1,$2),($3,$4)', [A, 'synthetic-a@example.invalid', B, 'synthetic-b@example.invalid']);
   const schema = await readFile(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
   await check('schema parses and executes on PostgreSQL', () => db.exec(schema));
+  await check('new migration upgrades deployed schema without rewriting existing recording data', async () => {
+    const upgrade = new PGlite();
+    try {
+      await upgrade.exec(bootstrap);
+      const directory = new URL('../supabase/migrations/', import.meta.url);
+      const migrations = (await readdir(directory)).filter(name => name.endsWith('.sql')).sort();
+      assert.ok(migrations.at(-1).endsWith('_recording_deletion_lifecycle.sql'));
+      for (const name of migrations.slice(0,-1)) await upgrade.exec(await readFile(new URL(name,directory),'utf8'));
+      await upgrade.query('insert into auth.users(id,email) values($1,$2)', [A,'synthetic-upgrade@example.invalid']);
+      await upgrade.query('insert into public.recordings(id,user_id,title,recorded_at,file_path,file_name,file_size,input_sha256) values($1,$2,$3,now(),$4,$5,100,$6)', [RA,A,'Preserved legacy recording',`${A}/${RA}/input.xlsx`,'synthetic.xlsx',INPUT]);
+      await upgrade.exec(await readFile(new URL(migrations.at(-1),directory),'utf8'));
+      const [record] = (await upgrade.query('select title,input_sha256,deletion_started_at from public.recordings where id=$1',[RA])).rows;
+      assert.deepEqual(record,{ title:'Preserved legacy recording',input_sha256:INPUT,deletion_started_at:null });
+    } finally { await upgrade.close(); }
+  });
 
   for (const user of [A, B]) {
     await role('authenticated', user, async () => {
@@ -135,6 +157,7 @@ try {
         await denied(() => db.query("select * from public.claim_analysis_job('intruder')"));
         await denied(() => db.query('select public.finish_analysis_job($1,$2,$3::jsonb)', [RA, RB, '{}']));
         await denied(() => db.query("select public.recover_worker_jobs('intruder')"));
+        await denied(() => db.query('select * from public.fence_worker_job($1,$2)', [RA,'intruder']));
       });
     }
   });
@@ -199,23 +222,81 @@ try {
   await role('service_role', null, () => db.query('update public.analysis_results set result_sha256=$1 where recording_id=$2', [NEW_RESULT, RA]));
   await check('changed saved result rejects stale chat publication', async () => {
     assert.equal(await finish(chatJob, { answer: 'stale' }), false);
+    assert.equal(await scalar('select status from public.analysis_jobs where id=$1',[chatJob.id]),'running');
+    assert.equal(await finish(chatJob,{},null,'result_changed'),true);
     assert.equal(await scalar('select status from public.analysis_jobs where id=$1', [chatJob.id]), 'interrupted');
     assert.equal(await scalar('select error_code from public.analysis_jobs where id=$1', [chatJob.id]), 'result_changed');
   });
   await enqueue(A, RA, 'waveform', { result_sha256: NEW_RESULT, start: 0, end: 10 }, 'wave-recovery');
   const interrupted = (await claim())[0];
-  await check('worker restart marks abandoned work interrupted without replaying it', async () => {
-    assert.equal(await role('service_role', null, () => scalar("select public.recover_worker_jobs('local-worker')")), 1);
+  await check('worker restart fences stale completion while keeping the deletion gate running', async () => {
+    await role('service_role', null, () => denied(() => scalar("select public.recover_worker_jobs('local-worker')")));
+    assert.deepEqual(await fence(interrupted,'different-worker'), []);
+    const [fenced] = await fence(interrupted);
+    assert.equal(fenced.status,'running');
+    assert.notEqual(fenced.lease_token,interrupted.lease_token);
+    assert.equal(await finish(interrupted,{artifact:'late-old-response'}),false);
+    await role('authenticated',A,() => db.query('update public.recordings set trashed_at=now() where id=$1',[RA]));
+    await denied(() => beginDeletion(A,RA));
+    assert.equal(await scalar('select deletion_started_at from public.recordings where id=$1',[RA]),null);
+    // Artifact rollback occurs here in the worker before this explicit error.
+    assert.equal(await finish(fenced,{},null,'worker_restarted'),true);
     assert.equal(await scalar('select status from public.analysis_jobs where id=$1', [interrupted.id]), 'interrupted');
+    await role('authenticated',A,() => db.query('update public.recordings set trashed_at=null where id=$1',[RA]));
     assert.deepEqual(await claim(), []);
+  });
+  await enqueue(A, RA, 'waveform', { result_sha256: NEW_RESULT, start: 0, end: 10 }, 'wave-completion-before-fence');
+  const completedBeforeFence = (await claim())[0];
+  await check('completion winning the lock is preserved by subsequent restart fencing', async () => {
+    const published={artifact:'published-overview'};
+    assert.equal(await finish(completedBeforeFence,published),true);
+    const [settled] = await fence(completedBeforeFence);
+    assert.equal(settled.status,'completed');
+    assert.equal(settled.lease_token,completedBeforeFence.lease_token);
+    assert.deepEqual(settled.result,published);
+    assert.equal(await finish(settled,{},null,'worker_restarted'),false);
   });
   await check('active recording cannot be permanently deleted', () => role('authenticated', A, async () => {
     assert.deepEqual(await rows('delete from public.recordings where id=$1 returning id', [RA]), []);
     assert.equal(await scalar('select count(*)::integer from public.recordings where id=$1', [RA]), 1);
   }));
+  await check('deletion preparation is owner-only and requires the recycle bin', async () => {
+    await denied(() => beginDeletion(B,RA));
+    await denied(() => beginDeletion(A,RA));
+    await role('anon',null,() => denied(() => db.query('select public.begin_recording_deletion($1)',[RA])));
+    await role('authenticated',A,() => denied(() => db.query('update public.recordings set deletion_started_at=now() where id=$1',[RA])));
+  });
+  await enqueue(A,RA,'waveform',{ result_sha256:NEW_RESULT,start:0,end:10 },'wave-running-before-delete');
+  const runningBeforeDelete = (await claim())[0];
   await enqueue(A, RA, 'waveform', { result_sha256: NEW_RESULT, start: 0, end: 10 }, 'wave-trashed');
   await role('authenticated', A, () => db.query('update public.recordings set trashed_at=now() where id=$1', [RA]));
-  await check('trashed recording cannot enqueue work and queued work is interrupted', async () => {
+  await check('old clients cannot remove files or delete rows before deletion preparation', () => role('authenticated',A,async () => {
+    assert.deepEqual(await rows('delete from storage.objects where name=$1 returning id',[`${A}/${RA}/input.xlsx`]),[]);
+    assert.equal(await scalar('select count(*)::integer from storage.objects where name=$1',[`${A}/${RA}/input.xlsx`]),1);
+    assert.deepEqual(await rows('delete from public.recordings where id=$1 returning id',[RA]),[]);
+  }));
+  await check('running work blocks deletion and rejected publication remains running until cleanup is acknowledged', async () => {
+    await denied(() => beginDeletion(A,RA));
+    assert.equal(await scalar('select deletion_started_at from public.recordings where id=$1',[RA]),null);
+    assert.equal(await scalar("select status from public.analysis_jobs where request_key='wave-trashed'"),'queued');
+    assert.equal(await finish(runningBeforeDelete,{}),false);
+    assert.equal(await scalar('select status from public.analysis_jobs where id=$1',[runningBeforeDelete.id]),'running');
+    await denied(() => beginDeletion(A,RA));
+    assert.equal(await finish(runningBeforeDelete,{},null,'record_unavailable'),true);
+    assert.equal(await scalar('select status from public.analysis_jobs where id=$1',[runningBeforeDelete.id]),'interrupted');
+  });
+  const deletion = await beginDeletion(A,RA);
+  await check('deletion preparation cancels queued work and is idempotent across cleanup retries', async () => {
+    assert.equal(deletion.id,RA); assert.equal(deletion.file_path,`${A}/${RA}/input.xlsx`);
+    assert.ok(deletion.deletion_started_at);
+    assert.equal((await beginDeletion(A,RA)).deletion_started_at,deletion.deletion_started_at);
+    assert.equal(await scalar("select error_code from public.analysis_jobs where request_key='wave-trashed'"),'deletion_requested');
+  });
+  await check('deleting recording cannot be restored, edited, newly queued or reclaimed', async () => {
+    await role('authenticated',A,async () => {
+      await denied(() => db.query('update public.recordings set trashed_at=null where id=$1',[RA]));
+      await denied(() => db.query("update public.recordings set title='Cannot edit' where id=$1",[RA]));
+    });
     await denied(() => enqueue(A, RA, 'analyse', {}, 'analyse-trashed'));
     assert.deepEqual(await claim(), []);
     assert.equal(await scalar("select status from public.analysis_jobs where request_key='wave-trashed'"), 'interrupted');
@@ -241,6 +322,8 @@ try {
   await role('service_role', null, () => db.query('update public.recordings set input_sha256=$1 where id=$2', [NEW_RESULT, RB]));
   await check('source checksum changed after claim prevents result publication', async () => {
     assert.equal(await finish(changedInput, {}, projection(RESULT)), false);
+    assert.equal(await scalar('select status from public.analysis_jobs where id=$1',[changedInput.id]),'running');
+    assert.equal(await finish(changedInput,{},null,'source_changed'),true);
     assert.equal(await scalar('select error_code from public.analysis_jobs where id=$1', [changedInput.id]), 'recording_changed');
     assert.equal(await scalar('select count(*)::integer from public.analysis_results where recording_id=$1', [RB]), 0);
   });

@@ -18,7 +18,7 @@ On the configured Windows account, open PowerShell and run:
 & 'E:\Codex Data\学校课程\BreathMap_web\worker\Run-Worker.ps1'
 ```
 
-Keep that process running while analysis is needed. Press Ctrl+C to stop after the active operation. No automatic startup service is installed. Credentials are already configured on this computer; do not configure them again just to start the worker.
+Keep that process running while analysis is needed. Stop it with Ctrl+C when no job is running. Interrupting an active numerical subprocess can also interrupt that analysis; after restarting the worker, explicitly retry the interrupted task from the website. No automatic startup service is installed. Credentials are already configured on this computer; do not configure them again just to start the worker.
 
 Email confirmation remains enabled. The project currently uses Supabase's limited default email service; ordinary users' confirmation and password-reset delivery still require custom SMTP. The project owner explicitly deferred that configuration. No real Softr accounts or participant recordings were migrated.
 

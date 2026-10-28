@@ -168,15 +168,16 @@ def main(argv=None):
         lines = [json.loads(line) for line in completed.stdout.decode("utf-8").splitlines() if line.startswith(b"{".decode())]
         check(any(line.get("processed") == 1 and line.get("status") == "completed" for line in lines), "real_worker_job_completed")
     def business_domains(user_a, user_b, rec_a):
+        relax_preferences = {"relax": {"mode": "quiet", "durationMinutes": 5, "volume": 20, "favorites": ["quiet"]}}
         status, rows = user_a["client"].rows("profiles", where={"id": "eq." + user_a["id"]})
         check(success(status) and len(rows) == 1, "profile_owner_read")
         status, rows = user_b["client"].rows("profiles", where={"id": "eq." + user_a["id"]})
         check(success(status) and rows == [], "profile_cross_account_read_empty")
         status, rows = user_a["client"].rows("profiles", where={"id": "eq." + user_a["id"]}, method="PATCH",
-                                              value={"name": "Updated synthetic profile", "relax_preferences": {"duration_minutes": 3}})
+                                              value={"name": "Updated synthetic profile", "relax_preferences": relax_preferences})
         check(success(status) and len(rows) == 1, "profile_owner_update")
         status, rows = user_a["client"].rows("profiles", where={"id": "eq." + user_a["id"]})
-        check(success(status) and rows[0]["name"] == "Updated synthetic profile" and rows[0]["relax_preferences"] == {"duration_minutes": 3}, "profile_update_persists")
+        check(success(status) and rows[0]["name"] == "Updated synthetic profile" and rows[0]["relax_preferences"] == relax_preferences, "profile_update_persists")
         status, rows = user_b["client"].rows("profiles", where={"id": "eq." + user_a["id"]}, method="PATCH", value={"name": "Unauthorized change"})
         check(success(status) and rows == [], "profile_cross_account_update_empty")
         status, _ = user_a["client"].rows("profiles", where={"id": "eq." + user_a["id"]}, method="DELETE")
@@ -189,9 +190,9 @@ def main(argv=None):
             "monitoring": ({"title": "Synthetic plan", "scheduled_at": now, "status": "Planned",
                              "notes": "Synthetic only", "recording_id": rec_a["id"]},
                             {"notes": "Updated synthetic plan", "status": "Completed"}),
-            "routines": ({"title": "Synthetic routine", "bed_time": "22:30:00", "wake_time": "07:00:00",
+            "routines": ({"title": "Synthetic routine", "bed_time": "22:30", "wake_time": "07:00",
                            "target_minutes": 510, "wind_down_minutes": 30,
-                           "days": ["Monday", "Tuesday"], "commitments": ["Synthetic practice"], "active": True},
+                           "days": [1, 2], "commitments": [{"label": "Synthetic practice", "start": "09:00", "end": "10:00", "days": [1, 2]}], "active": True},
                           {"wind_down_minutes": 20, "active": False}),
             "visits": ({"title": "Synthetic visit preparation", "appointment_at": now,
                          "concerns": "Synthetic observations only", "questions": "Synthetic question",
@@ -201,7 +202,7 @@ def main(argv=None):
             "reactions": ({"title": "Synthetic reaction check", "completed_at": now,
                             "median_ms": 250.0, "mean_ms": 255.0, "misses": 0, "false_starts": 0,
                             "valid_trials": 3, "trial_count": 3, "sleepiness": 2,
-                            "trials_json": [{"ms": 240}, {"ms": 250}, {"ms": 275}],
+                            "trials_json": [{"outcome": "valid", "reactionMs": 240}, {"outcome": "valid", "reactionMs": 250}, {"outcome": "valid", "reactionMs": 275}],
                             "test_version": "synthetic-cloud-smoke-v1", "device_class": "desktop", "notes": "Synthetic only"},
                            {"notes": "Updated synthetic reaction check", "median_ms": 251.0}),
         }
@@ -229,6 +230,67 @@ def main(argv=None):
             status, readback = user_a["client"].rows(table, where=where)
             check(success(status) and readback == [], table + "_delete_persists")
         report["business_domains"] = ["profiles", "recordings", *domains.keys()]
+
+    def lifecycle(user_a, user_b, rec_b, completed_wave_job):
+        """No model/AI work: exercise real lease fencing and deletion locks."""
+        terminal = admin.get_job(completed_wave_job["id"])
+        fenced_terminal = admin.fence(terminal["id"], terminal["worker_id"])
+        check(fenced_terminal and fenced_terminal["status"] == "completed" and
+              fenced_terminal["lease_token"] == terminal["lease_token"] and
+              fenced_terminal["result"] == terminal["result"], "fence_keeps_previously_completed_job_unchanged")
+        status, _ = user_a["client"].call("POST", "/rest/v1/rpc/begin_recording_deletion", {"p_recording_id": rec_b["id"]})
+        check(status >= 400, "cross_account_begin_deletion_denied")
+        status, _ = user_b["client"].call("POST", "/rest/v1/rpc/fence_worker_job", {"p_job_id": terminal["id"], "p_worker_id": "browser-cannot-fence"})
+        check(status >= 400, "browser_worker_fence_denied")
+        status, queued = user_b["client"].enqueue(rec_b["id"], "analyse", {"language": "en", "generate_report": False}, str(uuid.uuid4()))
+        check(success(status) and queued.get("status") == "queued", "lifecycle_disposable_job_queued_without_ai")
+        jobs.append(queued["id"])
+        only_this_run_is_pending()
+        smoke_worker = "synthetic-fence-" + run_id
+        claimed = admin.claim(smoke_worker)
+        check(claimed and claimed["id"] == queued["id"] and claimed["status"] == "running", "lifecycle_service_claims_exact_disposable_job")
+        status, trashed = user_b["client"].rows("recordings", where={"id": "eq." + rec_b["id"]}, method="PATCH", value={"trashed_at": datetime.now(timezone.utc).isoformat()})
+        check(success(status) and len(trashed) == 1, "running_record_can_move_to_recycle_bin")
+        status, _ = user_b["client"].call("POST", "/rest/v1/rpc/begin_recording_deletion", {"p_recording_id": rec_b["id"]})
+        check(status >= 400, "running_job_blocks_begin_deletion")
+        status, denied_removal = user_b["client"].call("DELETE", "/storage/v1/object/recordings", {"prefixes": [rec_b["path"]]})
+        check(status >= 400 or denied_removal == [], "running_job_blocks_direct_private_file_deletion")
+        status, original = user_b["client"].call("GET", "/storage/v1/object/authenticated/recordings/" + rec_b["path"], binary=True)
+        check(success(status) and hashlib.sha256(original).hexdigest() == KNOWN_INPUT, "rejected_deletion_keeps_private_original_intact")
+        fenced = admin.fence(claimed["id"], smoke_worker)
+        check(fenced and fenced["status"] == "running" and fenced["lease_token"] != claimed["lease_token"], "fence_rotates_lease_without_marking_job_terminal")
+        check(admin.finish(claimed, {}, error_code="worker_restarted") is False, "old_lease_cannot_finish_after_fence")
+        status, _ = user_b["client"].call("POST", "/rest/v1/rpc/begin_recording_deletion", {"p_recording_id": rec_b["id"]})
+        check(status >= 400, "fenced_running_job_still_blocks_deletion_before_cleanup")
+        check(admin.finish(fenced, {}, error_code="worker_restarted") is True, "new_lease_can_finish_after_exact_cleanup")
+        check(admin.get_job(fenced["id"])["status"] == "interrupted", "restart_finish_is_interrupted_not_completed")
+        status, marked = user_b["client"].call("POST", "/rest/v1/rpc/begin_recording_deletion", {"p_recording_id": rec_b["id"]})
+        check(success(status) and isinstance(marked, dict) and marked.get("id") == rec_b["id"] and marked.get("deletion_started_at"), "quiescent_trashed_record_can_freeze_for_deletion")
+        status, _ = user_b["client"].rows("recordings", where={"id": "eq." + rec_b["id"]}, method="PATCH", value={"trashed_at": None})
+        check(status >= 400, "deletion_marker_blocks_restore")
+        status, _ = user_b["client"].rows("recordings", where={"id": "eq." + rec_b["id"]}, method="PATCH", value={"notes": "This must not overwrite a frozen record"})
+        check(status >= 400, "deletion_marker_blocks_metadata_edit")
+        status, _ = user_b["client"].enqueue(rec_b["id"], "analyse", {"language": "en"}, str(uuid.uuid4()))
+        check(status >= 400, "deletion_marker_blocks_new_work")
+        status, deleted_files = user_b["client"].call("DELETE", "/storage/v1/object/recordings", {"prefixes": [rec_b["path"]]})
+        check(success(status) and isinstance(deleted_files, list) and len(deleted_files) == 1 and
+              deleted_files[0].get("name") == rec_b["path"], "frozen_owner_can_remove_exact_private_original")
+        status, remaining_files = user_b["client"].call("POST", "/storage/v1/object/list/recordings", {
+            "prefix": user_b["id"] + "/" + rec_b["id"], "limit": 100, "offset": 0})
+        check(success(status) and remaining_files == [], "private_original_absent_from_origin_listing")
+        status, removed = user_b["client"].rows("recordings", where={"id": "eq." + rec_b["id"]}, method="DELETE")
+        check(success(status) and len(removed) == 1, "frozen_owner_permanent_delete_finishes")
+        rec_b["metadata_created"] = False
+        # A previously fetched private URL can still be served from CDN cache
+        # during invalidation. Verify a fresh origin request, not the cached URL.
+        status, _ = user_b["client"].call("GET", "/storage/v1/object/authenticated/recordings/" + rec_b["path"] +
+            "?" + urlencode({"cacheNonce": str(uuid.uuid4())}), binary=True,
+            headers={"Cache-Control": "no-store, no-cache, max-age=0", "Pragma": "no-cache"})
+        check(status >= 400, "permanent_delete_removes_private_original")
+        status, remaining = own_rows(user_b, "analysis_jobs", rec_b["id"], "id,status")
+        check(success(status) and remaining == [], "permanent_delete_cascades_fenced_job")
+        remaining = admin.request("GET", "/rest/v1/analysis_jobs?" + urlencode({"recording_id": "eq." + rec_b["id"], "select": "id"}))
+        check(remaining == [], "service_confirms_permanent_delete_cascades_fenced_job")
     try:
         admin = SupabaseCloud.from_environment()
         url, publishable = client_settings()
@@ -337,6 +399,7 @@ def main(argv=None):
               "detailed_waveform_respects_selected_interval_and_bound")
         check(len(wave["points"]) == len(wave["break_before"]) and wave["sampling"]["interpolation"] is False,
               "detailed_waveform_preserves_gap_flags_without_interpolation")
+        lifecycle(user_a, user_b, rec_b, wave_job)
         if args.with_ai:
             # Exactly one new report command and one question command. The
             # existing provider flow may perform its single bounded repair.
@@ -432,6 +495,9 @@ def main(argv=None):
                         status, _ = client.rows("recordings", where={"id": "eq." + record["id"]}, method="PATCH", value={"trashed_at": datetime.now(timezone.utc).isoformat()})
                         if not success(status):
                             raise CheckFailure("cleanup_trash_failed")
+                        status, _ = client.call("POST", "/rest/v1/rpc/begin_recording_deletion", {"p_recording_id": record["id"]})
+                        if not success(status):
+                            raise CheckFailure("cleanup_begin_deletion_failed")
                         status, removed = client.rows("recordings", where={"id": "eq." + record["id"]}, method="DELETE")
                         if not success(status) or len(removed) != 1:
                             raise CheckFailure("cleanup_delete_failed")

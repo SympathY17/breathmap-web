@@ -9,7 +9,7 @@ All business rows use UUID keys. `profiles.id` is the Supabase Auth user ID; it 
 | Table | Logical fields exposed through the legacy adapter |
 | --- | --- |
 | `profiles` | `name`, `relax_preferences` JSON object |
-| `recordings` | `title`, `details`, `notes`, `recorded_at`, server `uploaded_at`, `trashed_at`, immutable file metadata |
+| `recordings` | `title`, `details`, `notes`, `recorded_at`, server `uploaded_at`, `trashed_at`, read-only `deletion_started_at`, immutable file metadata |
 | `diary` | `title`, `date`, `bed_at`, `wake_at`, `awakening_count`, `sleep_quality`, `day_sleepiness`, `caffeine_note`, `notes`, `recordings` UUID array |
 | `monitoring` | `title`, `scheduled_at`, `status`, `notes`, nullable scalar `recording_id` |
 | `routines` | `title`, `bed_time`, `wake_time`, `target_minutes`, `wind_down_minutes`, `days` JSON array, `commitments` JSON array, `active` |
@@ -27,9 +27,9 @@ UUID arrays preserve the existing UI without new join-table calls. Insert/update
 3. Upload with `upsert:false` to the private `recordings` bucket at `{user_id}/{recording_id}/input.xlsx`. Upload policy allows this exact own-user path before the metadata row exists.
 4. Create the metadata row with the same ID and `file_path`, original `file_name`, byte `file_size`, and `input_sha256`. Failed metadata writes retain the uploaded attachment for retry or explicitly remove the orphan; they must not silently create a new path on every retry.
 5. Client updates are limited to title, notes, details, recorded date and recycle-bin date. Input file metadata/checksum cannot be changed through the browser.
-6. Before permanent deletion, the row must already be in the recycle bin. Remove its private input object and all objects below `analysis-artifacts/{user_id}/{recording_id}/`, then delete the row. If Storage cleanup fails, keep the row in the recycle bin and report the failure. Database deletion cascades cloud jobs/results; provider backups and previously processed local copies have separate retention.
+6. Before permanent deletion, the row must already be in the recycle bin. Call the owner-checked `begin_recording_deletion` RPC. It locks the row and related jobs, rejects running work, cancels queued work and sets a server-controlled deletion marker. A busy task lock returns a retryable refusal before Storage cleanup. Once marked, restore/edit/new requests are forbidden. Remove its private input and analysis objects, then freshly list both origin prefixes and confirm they are empty before deleting the row. A failed or uncertain cleanup keeps the marked row for retry. Database deletion cascades cloud jobs/results; provider backups and previously processed local copies have separate retention.
 
-The second bucket is private `analysis-artifacts`; only the worker uploads outputs. Owners can read/download/delete their own paths. Use signed URLs with short expiry or authenticated downloads; do not store expiring URLs as permanent metadata. No public file bucket is created.
+The second bucket is private `analysis-artifacts`; only the worker uploads outputs. Owners can read/download their own paths; deletion requires the matching frozen, trashed record and no active job. Use signed URLs with short expiry or authenticated downloads; do not store expiring URLs as permanent metadata. No public file bucket is created.
 
 ## Analysis commands and results
 
@@ -52,7 +52,7 @@ Numerical and AI-report statuses remain separate. Old Softr summaries containing
 
 The worker makes outbound Supabase requests with its protected server credential. It does not expose the local Python API to the internet.
 
-1. After acquiring its local exclusive lock, call `recover_worker_jobs(p_worker_id)` once to mark that worker's abandoned running jobs interrupted. This never requeues or repeats paid requests.
+1. After acquiring its local exclusive lock, enumerate its running jobs and pending local journals. Call `fence_worker_job(p_job_id,p_worker_id)` for each before cleanup. The database job lock preserves a completed outcome or rotates the running lease while keeping the deletion gate closed. Reconcile committed outputs; otherwise remove only exact unpublished job-owned objects before explicitly finishing the fenced job as interrupted. An unresolved upload remains running for verified readback or operator review. This never requeues or repeats paid requests.
 2. `claim_analysis_job(p_worker_id)` atomically claims at most one queued row with `FOR UPDATE SKIP LOCKED`, assigns a UUID `lease_token`, and returns a set containing zero or one job. Unavailable/changed source recordings are marked interrupted.
 3. Check ownership, untrashed status and input hash before downloading/processing. Use `E:\breathmap` as the existing runtime sandbox.
 4. Write `worker_heartbeat` with `{id:'main',last_seen,status:'online'|'busy'|'offline'}` periodically. It contains no hostnames, credentials or local paths. Signed-in users may read it; a stale timestamp means the worker's availability is unknown/offline, not that its task should automatically rerun.
@@ -60,7 +60,7 @@ The worker makes outbound Supabase requests with its protected server credential
 6. Call `finish_analysis_job(p_job_id,p_lease_token,p_result,p_analysis_result,p_error_code)`. It checks current source and result bindings and atomically upserts a supplied complete analysis projection and finishes the job. `p_analysis_result` is null for chat/waveform, otherwise an object with `summary`, `display`, `windows`, `wave_manifest`, `result_sha256`. A report cannot replace the numerical result hash. A non-null safe `p_error_code` marks the job failed while still allowing an already calculated numeric projection to be saved.
 7. A changed/deleted/trashed source or changed result rejects stale publication. A deleted row also cascades its pending job and result rows. Interrupted jobs require an explicit new request; lease expiry never automatically authorizes duplicate analysis or AI.
 
-`claim_analysis_job`, `finish_analysis_job` and `recover_worker_jobs` are executable only by `service_role`; their SQL uses invoker security. The authenticated public enqueue wrapper uses invoker security and calls a tightly checked definer function in the non-exposed `private` schema. Every function has a fixed empty search path and explicit execute grants.
+`claim_analysis_job`, `finish_analysis_job` and `fence_worker_job` are executable only by `service_role`; their SQL uses invoker security. Execution of the obsolete broad `recover_worker_jobs` function is revoked. The authenticated public enqueue and deletion wrappers use invoker security and call tightly checked definer functions in the non-exposed `private` schema. Every function has a fixed empty search path and explicit execute grants.
 
 ## Verification
 

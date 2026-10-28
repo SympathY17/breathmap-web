@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 const mocked = vi.hoisted(() => ({ requireSupabase: vi.fn() }));
 vi.mock("./user", () => ({ useCurrentUser: () => null }));
 vi.mock("./supabase", () => ({ requireSupabase: mocked.requireSupabase, supabase: null }));
-import { applyWhere, fetchPage, insertRecordingWithRecovery, q, savedSummary, writableFields } from "./datasource";
+import { applyWhere, deleteRecordingWithLifecycle, fetchPage, insertRecordingWithRecovery, q, savedSummary, writableFields } from "./datasource";
 
 const recordingOwner = "11111111-1111-4111-8111-111111111111";
 const recordingId = "22222222-2222-4222-8222-222222222222";
@@ -157,5 +157,110 @@ describe("recording creation acknowledgement recovery", () => {
     const server = recordingServer({ row: { ...submitted, trashed_at: null }, insertError: { code: "23514", message: "connection check constraint failed" } });
     await expect(insertRecordingWithRecovery(server.client, submitted, recordingOwner)).rejects.toThrow("check constraint failed");
     expect(server.lookups()).toBe(0);
+  });
+});
+
+function deletionServer(options: { beginError?: string; removeFailure?: boolean; malformedAck?: boolean; filteredRemoveBucket?: string; invalidListBucket?: string } = {}) {
+  const state = { exists: true, marked: false, failed: false };
+  const events: string[] = [];
+  const prefix = `${recordingOwner}/${recordingId}`, hash = 'a'.repeat(64);
+  const files: Record<string, Set<string>> = {
+    recordings: new Set([`${prefix}/input.xlsx`]),
+    'analysis-artifacts': new Set([`${prefix}/${hash}/overview-job.json`]),
+  };
+  const client: any = {
+    rpc: async (name: string, input: any) => {
+      events.push('begin'); expect(name).toBe('begin_recording_deletion'); expect(input).toEqual({ p_recording_id: recordingId });
+      if (options.beginError) return { data: null, error: { message: options.beginError } };
+      state.marked = true;
+      return { data: options.malformedAck ? { id: recordingId } : { id: recordingId, file_path: `${prefix}/input.xlsx`, deletion_started_at: '2026-10-28T06:00:00Z' }, error: null };
+    },
+    storage: { from: (bucket: string) => ({
+      list: async (folder: string) => {
+        events.push(`list:${bucket}`); expect(state.marked).toBe(true);
+        if (bucket === options.invalidListBucket) return { data: null, error: null };
+        const children = new Map<string, any>();
+        for (const file of files[bucket]) {
+          if (!file.startsWith(folder + '/')) continue;
+          const tail = file.slice(folder.length + 1), name = tail.split('/')[0];
+          children.set(name, { name, id: tail.includes('/') ? null : 'object-id' });
+        }
+        return { data: [...children.values()], error: null };
+      },
+      remove: async (paths: string[]) => {
+        events.push(`remove:${bucket}`); expect(state.marked).toBe(true);
+        if (options.removeFailure && !state.failed) { state.failed = true; return { data: null, error: { message: 'Network interruption' } }; }
+        if (bucket === options.filteredRemoveBucket) return { data: [], error: null };
+        for (const path of paths) files[bucket].delete(path);
+        return { data: [], error: null };
+      },
+    }) },
+    from: (table: string) => {
+      expect(table).toBe('recordings'); const filters: any[] = [];
+      const query: any = {
+        delete: () => query,
+        eq: (...args: any[]) => { filters.push(args); return query; },
+        not: (...args: any[]) => { filters.push(args); return query; },
+        select: () => query,
+        single: async () => {
+          events.push('delete-row'); expect(state.marked).toBe(true);
+          expect(files.recordings.size + files['analysis-artifacts'].size).toBe(0);
+          expect(filters).toContainEqual(['user_id', recordingOwner]);
+          expect(filters).toContainEqual(['deletion_started_at', 'is', null]);
+          state.exists = false; return { data: { id: recordingId }, error: null };
+        },
+      };
+      return query;
+    },
+  };
+  return { client, state, events, files };
+}
+
+describe('permanent deletion lifecycle', () => {
+  it.each(['RECORDING_ANALYSIS_RUNNING', 'RECORDING_TASK_BUSY'])('does not touch any files when the server reports %s', async code => {
+    const server = deletionServer({ beginError: code });
+    await expect(deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner)).rejects.toThrow(code);
+    expect(server.events).toEqual(['begin']); expect(server.state.exists).toBe(true); expect(server.state.marked).toBe(false);
+  });
+  it('requires an acknowledged, owner-bound deletion marker before file removal', async () => {
+    const server = deletionServer({ malformedAck: true });
+    await expect(deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner)).rejects.toThrow('Deletion could not be confirmed');
+    expect(server.events).toEqual(['begin']); expect(server.files.recordings.size).toBe(1);
+  });
+  it('keeps a failed cleanup marked and retries it before deleting the row', async () => {
+    const server = deletionServer({ removeFailure: true });
+    await expect(deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner)).rejects.toThrow('Network interruption');
+    expect(server.state).toMatchObject({ exists: true, marked: true });
+    expect(server.events).not.toContain('delete-row');
+    await deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner);
+    expect(server.events.at(-1)).toBe('delete-row'); expect(server.state.exists).toBe(false);
+    expect(server.files.recordings.size + server.files['analysis-artifacts'].size).toBe(0);
+    expect(server.events.filter(event => event === 'begin')).toHaveLength(2);
+  });
+  it('does not let forms forge the read-only deletion marker', () => {
+    expect(() => writableFields('recordings', { deletionStartedAt: '2026-10-28T06:00:00Z' })).toThrow('managed by the server');
+  });
+  it.each(['recordings', 'analysis-artifacts'])('keeps metadata and its marker when HTTP 200 removes no %s objects', async bucket => {
+    const server = deletionServer({ filteredRemoveBucket: bucket });
+    await expect(deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner)).rejects.toThrow('File cleanup could not be confirmed');
+    expect(server.state).toMatchObject({ exists: true, marked: true });
+    expect(server.events).not.toContain('delete-row');
+    expect(server.files[bucket].size).toBe(1);
+    expect(server.events.filter(event=>event===`list:${bucket}`).length).toBeGreaterThanOrEqual(1);
+  });
+  it('accepts an already absent input on retry only after both fresh prefix listings are empty', async () => {
+    const server = deletionServer();
+    server.files.recordings.clear();
+    await deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner);
+    expect(server.state.exists).toBe(false);
+    const finalLists=server.events.slice(server.events.indexOf('remove:recordings')+1,-1);
+    expect(finalLists).toContain('list:analysis-artifacts');expect(finalLists).toContain('list:recordings');
+    expect(server.events.at(-1)).toBe('delete-row');
+  });
+  it('keeps metadata when the origin list has no valid acknowledgement', async () => {
+    const server = deletionServer({ invalidListBucket: 'recordings' });
+    await expect(deleteRecordingWithLifecycle(server.client, recordingId, recordingOwner)).rejects.toThrow('File cleanup could not be confirmed');
+    expect(server.state).toMatchObject({ exists: true, marked: true });
+    expect(server.events).not.toContain('delete-row');
   });
 });

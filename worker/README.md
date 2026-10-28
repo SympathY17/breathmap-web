@@ -21,7 +21,7 @@ Run from a terminal in this folder with credentials supplied by the protected la
 
 The supplied Windows launchers avoid saving a plaintext key in the project. First run `Configure-Worker.ps1 -ProjectUrl <your exact Supabase HTTPS project URL>` and enter the server secret in its hidden prompt. It saves a current-Windows-user encrypted credential under `E:\breathmap\config\supabase-web`. Then run `Run-Worker.ps1` (or `Run-Worker.ps1 -Once` for a single-job check). These scripts must run under the Windows account that saved the credential. Never paste the key into chat or include it in the `-ProjectUrl` argument.
 
-`--once` claims at most one queued job, which is useful for controlled acceptance checks. The normal poll interval is five seconds; `--poll-seconds` accepts 2–300 seconds. Press Ctrl+C to finish the active operation and stop. Keep the terminal running while the website should accept new analysis work. This script does not install an automatic Windows service or startup task.
+`--once` claims at most one queued job, which is useful for controlled acceptance checks. The normal poll interval is five seconds; `--poll-seconds` accepts 2–300 seconds. Stop with Ctrl+C when no job is running. Numerical subprocesses share the Windows console, so Ctrl+C during analysis can interrupt the child as well; it is not a promise to finish the active operation. Restart the worker before explicitly retrying an interrupted task. Keep the terminal running while the website should accept new analysis work. This script does not install an automatic Windows service or startup task.
 
 Modern secret keys are sent only on the `apikey` header. Legacy service-role JWTs use `apikey` and `Authorization: Bearer`; publishable keys and legacy anon keys are rejected for the worker. Supabase performs actual credential verification; local legacy-claim decoding only diagnoses the wrong key type. See the [official API key guide](https://supabase.com/docs/guides/getting-started/api-keys).
 
@@ -31,16 +31,20 @@ After constructing its transport, the worker removes both key variables from its
 
 The new ledger is `E:\breathmap\state\supabase-web\worker.sqlite`; the process lock is beside it. The original `state\bridge.sqlite` is never opened. Inputs, numerical output and reports stay in the existing sandbox's UUID record folders. A cloud recording is durably bound to its owner UUID, file checksum and local UUID.
 
-An OS lock prevents two instances on this host. On restart, only abandoned jobs owned by this adapter's stable worker ID are marked interrupted. There is no timeout-based automatic requeue, repeated inference or repeated paid AI request. A complete locally prepared result whose network publication failed is retained for review. An explicit new analysis request reuses a valid saved numerical result; it does not silently recompute the model. Partial or mismatched local artifacts require review.
+An OS lock prevents two instances on this host. Before restart cleanup, a server-side row lock either confirms a previously committed completion or rotates the abandoned running job's lease. The running state blocks permanent deletion until exact unpublished artifacts have been removed and the fenced job is explicitly finished as interrupted. An uncertain publication is reconciled before any later job is claimed; published artifacts are retained.
+
+There is no timeout-based automatic requeue or automatic repetition of paid AI calls. An explicit new analysis request reuses a successful saved numerical result. If a previous analysis is unusable, failed or interrupted without complete output, an explicit new analysis job gets its own local attempt and preserves the old artifacts. The current binding changes only after the new cloud result commits. Waveform, report and question requests never rerun numerical analysis.
 
 A transient network error can leave a cloud task marked running until the worker is restarted. Restart marks it interrupted, after which the user can explicitly request the action again. Automatic retrying of paid calls is deliberately avoided because the provider may have processed a request even when its response was lost.
+
+An ambiguous Storage upload is treated more strictly: the worker stops claiming work and keeps that job running. Restart can proceed only if a complete read of the exact unique object matches the journalled content hash. A missing or mismatching object produces `artifact_upload_outcome_unresolved` or `artifact_upload_content_unverified` and requires operator review; absence is not evidence that a timed-out upload was cancelled. Do not manually clear the task or delete the journal to bypass this gate.
 
 ## Data contracts
 
 The database contract is in `..\docs\schema.md`. The worker calls:
 
 - `claim_analysis_job(p_worker_id)`
-- `recover_worker_jobs(p_worker_id)` after acquiring its exclusive lock
+- `fence_worker_job(p_job_id,p_worker_id)` after acquiring its exclusive lock, before restart reconciliation or cleanup
 - `finish_analysis_job(p_job_id,p_lease_token,p_result,p_analysis_result,p_error_code)`
 
 Only the service role can call these. Signed-in browser users submit checked requests through the separate `request_analysis_job` RPC.

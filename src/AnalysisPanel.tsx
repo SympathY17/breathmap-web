@@ -68,11 +68,11 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     if (issue) { setError(t('Your record could not be refreshed. Please try again.', '暂时无法刷新记录，请重试。')); setLoading(false); return; }
     if (metadataVersion === detailsWriteVersion.current) setRecord(r.data);
     setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
-    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setConsent(false); setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; }
+    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setConsent(false); setWave(null); setEvidenceView(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; }
     previousResult.current = a.data?.result_sha256 ?? null;
   }, [recordingId, user?.id, lang]);
   useEffect(() => { alive.current = true; void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => { alive.current = false; clearInterval(timer); }; }, [refresh]);
-  useEffect(() => { setConsent(false); setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; }, [recordingId]);
+  useEffect(() => { setConsent(false); setWave(null); setEvidenceView(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; }, [recordingId]);
   useEffect(() => { if (record) setNote(record.notes ?? ''); }, [record?.id, record?.notes]);
   useEffect(() => { localStorage.setItem('breathmap-language', lang); }, [lang]);
   const hash = result?.result_sha256;

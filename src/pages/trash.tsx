@@ -475,6 +475,7 @@ export default function Block(){
   }
   async function changeTrash(record:any,restore=false){
     if(busy||!update.enabled||!ownerMatches(record,email))return;resetMessages();setBusy(true);let written=false;
+    if(restore&&plain(record.fields.deletionStartedAt)){setError(t("Permanent deletion has started. Finish deleting this recording instead of restoring it.","已开始彻底删除，请继续完成删除，不能再恢复这条记录。"));setBusy(false);return;}
     const success=restore?t("Recording restored.","记录已恢复。"):t("Recording moved to the recycle bin.","记录已移入回收站。");
     try{
       await update.mutateAsync({recordId:record.id,fields:{trashedAt:restore?null:new Date().toISOString()}});
@@ -490,9 +491,13 @@ export default function Block(){
     try{
       await remove.mutateAsync(dialog.record.id);written=true;setDialog(null);
       await records.refetch();setMessage(t("Recording permanently deleted.","记录已彻底删除。"));
-    }catch{
+    }catch(issue){
       if(written)setMessage(t("Recording permanently deleted. Refresh the page to reload the recycle bin.","记录已彻底删除，请刷新页面读取最新回收站。"));
-      else setError(t("Deletion failed. The recording remains in the recycle bin.","删除失败，记录仍保留在回收站。"));
+      else {
+        const code=issue instanceof Error?issue.message:"";
+        setError(code.includes("RECORDING_ANALYSIS_RUNNING")||code.includes("RECORDING_TASK_BUSY")?t("A recording task is still running. Wait for it to finish, then try permanent deletion again. No files were removed.","记录任务仍在处理，请等待完成后再次彻底删除；文件尚未移除。"):t("Deletion could not be completed or confirmed. Refresh the recycle bin and retry permanent deletion. A recording whose deletion has started cannot be restored.","删除未能完成或确认，请刷新回收站后重试彻底删除；已开始删除的记录不能恢复。"));
+        try{await records.refetch();}catch{}
+      }
     }finally{setBusy(false);}
   }
   function fieldForm(upload = false) {
@@ -627,9 +632,9 @@ export default function Block(){
     if(inTrash)return <>
       <div className="trash-list">{rows.map(r=><div className="trash-row" key={r.id}>
         <span className="record-icon"><FileText className="icon"/></span>
-        <div className="trash-record-copy"><h2>{plain(r.fields.title)}</h2><p>{t("Recorded: ","采集时间：")}{fmtDate(r.fields.recordedAt,lang)}</p><p>{t("Moved: ","移入时间：")}{fmtDate(r.fields.trashedAt,lang)}</p></div>
+        <div className="trash-record-copy"><h2>{plain(r.fields.title)}</h2><p>{t("Recorded: ","采集时间：")}{fmtDate(r.fields.recordedAt,lang)}</p><p>{t("Moved: ","移入时间：")}{fmtDate(r.fields.trashedAt,lang)}</p>{plain(r.fields.deletionStartedAt)&&<p>{t("Permanent deletion started. Retry to finish removing this recording.","已开始彻底删除，请重试以完成移除。")}</p>}</div>
         <span className="status neutral">{bmRecordingState(r,t)}</span>
-        <div className="trash-actions"><button type="button" className="btn secondary" disabled={busy||!update.enabled} onClick={()=>changeTrash(r,true)} aria-label={t(`Restore ${plain(r.fields.title)}`,`恢复${plain(r.fields.title)}`)}><RotateCcw className="icon"/>{t("Restore recording","恢复记录")}</button><button type="button" className="btn quiet danger-button" disabled={busy||!remove.enabled} onClick={()=>openDialog("delete",r)} aria-label={t(`Permanently delete ${plain(r.fields.title)}`,`彻底删除${plain(r.fields.title)}`)}><Trash2 className="icon"/>{t("Permanently delete","彻底删除")}</button></div>
+        <div className="trash-actions"><button type="button" className="btn secondary" disabled={busy||!update.enabled||!!plain(r.fields.deletionStartedAt)} onClick={()=>changeTrash(r,true)} aria-label={t(`Restore ${plain(r.fields.title)}`,`恢复${plain(r.fields.title)}`)}><RotateCcw className="icon"/>{t("Restore recording","恢复记录")}</button><button type="button" className="btn quiet danger-button" disabled={busy||!remove.enabled} onClick={()=>openDialog("delete",r)} aria-label={t(`Permanently delete ${plain(r.fields.title)}`,`彻底删除${plain(r.fields.title)}`)}><Trash2 className="icon"/>{plain(r.fields.deletionStartedAt)?t("Finish deletion","完成删除"):t("Permanently delete","彻底删除")}</button></div>
       </div>)}</div>
       {records.hasNextPage&&<div className="button-row"><button type="button" className="btn secondary" onClick={()=>records.fetchNextPage()} disabled={records.isFetchingNextPage}>{records.isFetchingNextPage?t("Loading…","正在读取……"):t("Load more recordings","加载更多记录")}</button></div>}
     </>;

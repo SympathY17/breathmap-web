@@ -27,6 +27,7 @@ create table public.recordings (
   file_size bigint not null check (file_size between 1 and 52428800),
   input_sha256 text check (input_sha256 ~ '^[0-9a-f]{64}$'),
   trashed_at timestamptz,
+  deletion_started_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id,user_id),
@@ -201,6 +202,16 @@ end;
 $$;
 revoke all on function private.unlink_deleted_recording() from public,anon,authenticated;
 
+create function private.freeze_deleting_recording() returns trigger language plpgsql security invoker set search_path = '' as $$
+begin
+  if old.deletion_started_at is not null and (to_jsonb(new)-'updated_at') is distinct from (to_jsonb(old)-'updated_at') then
+    raise exception 'RECORDING_DELETION_STARTED';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.freeze_deleting_recording() from public,anon,authenticated;
+
 do $$ declare tbl text; begin
   foreach tbl in array array['profiles','recordings','diary','monitoring','routines','visits','reactions'] loop
     execute format('create trigger touch_updated_at before update on public.%I for each row execute function private.touch_updated_at()',tbl);
@@ -209,6 +220,7 @@ end $$;
 create trigger diary_owned_links before insert or update of recordings,user_id on public.diary for each row execute function private.check_recording_links();
 create trigger visits_owned_links before insert or update of recordings,user_id on public.visits for each row execute function private.check_recording_links();
 create trigger recordings_unlink before delete on public.recordings for each row execute function private.unlink_deleted_recording();
+create trigger recordings_freeze_deleting before update on public.recordings for each row execute function private.freeze_deleting_recording();
 
 -- Explicit grants and RLS are both required. No anonymous business access.
 revoke all on public.profiles,public.recordings,public.diary,public.monitoring,public.routines,public.visits,public.reactions,public.analysis_jobs,public.analysis_results,public.worker_heartbeat from anon,authenticated;
@@ -245,7 +257,10 @@ do $$ declare tbl text; begin
     execute format('create policy owner_delete on public.%I for delete to authenticated using ((select auth.uid())=user_id)',tbl);
   end loop;
 end $$;
-create policy recording_delete_trashed on public.recordings for delete to authenticated using ((select auth.uid())=user_id and trashed_at is not null);
+create policy recording_delete_trashed on public.recordings for delete to authenticated using (
+  (select auth.uid())=user_id and trashed_at is not null and deletion_started_at is not null
+  and not exists(select 1 from public.analysis_jobs j where j.recording_id=recordings.id and j.user_id=recordings.user_id and j.status in ('queued','running'))
+);
 alter table public.worker_heartbeat enable row level security;
 create policy worker_status_read on public.worker_heartbeat for select to authenticated using (true);
 
@@ -260,7 +275,7 @@ begin
   if p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>32768 then raise exception 'Invalid request payload'; end if;
   if p_payload ?| array['_input_sha256','_file_path','_result_sha256'] then raise exception 'Reserved request field'; end if;
   if p_request_key is null or char_length(p_request_key) not between 1 and 128 then raise exception 'Invalid request key'; end if;
-  select * into rec from public.recordings where id=p_recording_id and user_id=account_id and trashed_at is null for share;
+  select * into rec from public.recordings where id=p_recording_id and user_id=account_id and trashed_at is null and deletion_started_at is null for share;
   if not found then raise exception 'Recording is not available to this account'; end if;
   if rec.input_sha256 is null then raise exception 'File checksum is required before analysis'; end if;
   if p_payload ? 'generate_report' and jsonb_typeof(p_payload->'generate_report') is distinct from 'boolean' then raise exception 'Invalid report option'; end if;
@@ -300,12 +315,47 @@ $$;
 revoke all on function public.request_analysis_job(uuid,text,jsonb,text) from public,anon,authenticated;
 grant execute on function public.request_analysis_job(uuid,text,jsonb,text) to authenticated;
 
+-- Quiesce work before file removal. NOWAIT avoids a record->job wait cycle
+-- with the existing finisher's job->record lock order; callers retry safely.
+create function private.begin_recording_deletion(p_recording_id uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare account_id uuid := auth.uid(); rec public.recordings;
+begin
+  if account_id is null then raise exception 'RECORDING_NOT_AVAILABLE'; end if;
+  select * into rec from public.recordings where id=p_recording_id and user_id=account_id for update;
+  if not found then raise exception 'RECORDING_NOT_AVAILABLE'; end if;
+  if rec.trashed_at is null then raise exception 'RECORDING_NOT_TRASHED'; end if;
+  if exists(select 1 from public.analysis_jobs where recording_id=rec.id and user_id=account_id and status='running') then
+    raise exception 'RECORDING_ANALYSIS_RUNNING';
+  end if;
+  begin
+    perform 1 from public.analysis_jobs where recording_id=rec.id and user_id=account_id for update nowait;
+  exception when lock_not_available then raise exception 'RECORDING_TASK_BUSY';
+  end;
+  if exists(select 1 from public.analysis_jobs where recording_id=rec.id and user_id=account_id and status='running') then
+    raise exception 'RECORDING_ANALYSIS_RUNNING';
+  end if;
+  update public.analysis_jobs set status='interrupted',error_code='deletion_requested',finished_at=now()
+    where recording_id=rec.id and user_id=account_id and status='queued';
+  update public.recordings set deletion_started_at=coalesce(deletion_started_at,now()) where id=rec.id and user_id=account_id returning * into rec;
+  return jsonb_build_object('id',rec.id,'file_path',rec.file_path,'deletion_started_at',rec.deletion_started_at);
+end;
+$$;
+revoke all on function private.begin_recording_deletion(uuid) from public,anon,authenticated;
+grant execute on function private.begin_recording_deletion(uuid) to authenticated;
+create function public.begin_recording_deletion(p_recording_id uuid)
+returns jsonb language sql security invoker set search_path = '' as $$
+  select private.begin_recording_deletion(p_recording_id);
+$$;
+revoke all on function public.begin_recording_deletion(uuid) from public,anon,authenticated;
+grant execute on function public.begin_recording_deletion(uuid) to authenticated;
+
 create function public.claim_analysis_job(p_worker_id text)
 returns setof public.analysis_jobs language plpgsql security invoker set search_path = '' as $$
 begin
   if p_worker_id is null or char_length(p_worker_id) not between 1 and 128 then raise exception 'Invalid worker ID'; end if;
   update public.analysis_jobs j set status='interrupted',error_code='recording_unavailable',finished_at=now()
-    where j.status='queued' and not exists(select 1 from public.recordings r where r.id=j.recording_id and r.user_id=j.user_id and r.trashed_at is null and r.input_sha256=j.payload->>'_input_sha256' and r.file_path=j.payload->>'_file_path');
+    where j.status='queued' and not exists(select 1 from public.recordings r where r.id=j.recording_id and r.user_id=j.user_id and r.trashed_at is null and r.deletion_started_at is null and r.input_sha256=j.payload->>'_input_sha256' and r.file_path=j.payload->>'_file_path');
   return query with candidate as (
     select j.id from public.analysis_jobs j where j.status='queued' order by j.created_at,j.id limit 1 for update skip locked
   ) update public.analysis_jobs j set status='running',worker_id=p_worker_id,lease_token=gen_random_uuid(),started_at=now(),finished_at=null,error_code=null
@@ -321,17 +371,25 @@ declare task public.analysis_jobs; rec public.recordings; current_sha text; outp
 begin
   select * into task from public.analysis_jobs where id=p_job_id and status='running' and lease_token=p_lease_token for update;
   if not found then return false; end if;
+  if p_error_code is not null and (p_error_code !~ '^[a-zA-Z0-9_.-]{1,128}$') then raise exception 'Invalid error code'; end if;
   select * into rec from public.recordings where id=task.recording_id and user_id=task.user_id for share;
-  if not found or rec.trashed_at is not null or rec.input_sha256 is distinct from task.payload->>'_input_sha256' or rec.file_path is distinct from task.payload->>'_file_path' then
-    update public.analysis_jobs set status='interrupted',error_code='recording_changed',finished_at=now() where id=task.id;
+  if not found or rec.trashed_at is not null or rec.deletion_started_at is not null or rec.input_sha256 is distinct from task.payload->>'_input_sha256' or rec.file_path is distinct from task.payload->>'_file_path' then
+    -- Keep the lease running until the worker has removed its unpublished
+    -- objects; only its subsequent explicit error completion releases deletion.
+    if p_error_code is not null and p_analysis_result is null then
+      update public.analysis_jobs set status='interrupted',error_code='recording_changed',finished_at=now() where id=task.id;
+      return true;
+    end if;
     return false;
   end if;
   select result_sha256 into current_sha from public.analysis_results where recording_id=rec.id and user_id=rec.user_id;
   if task.operation<>'analyse' and current_sha is distinct from task.payload->>'_result_sha256' then
-    update public.analysis_jobs set status='interrupted',error_code='result_changed',finished_at=now() where id=task.id;
+    if p_error_code is not null and p_analysis_result is null then
+      update public.analysis_jobs set status='interrupted',error_code='result_changed',finished_at=now() where id=task.id;
+      return true;
+    end if;
     return false;
   end if;
-  if p_error_code is not null and (p_error_code !~ '^[a-zA-Z0-9_.-]{1,128}$') then raise exception 'Invalid error code'; end if;
   if p_result is not null and octet_length(p_result::text)>10485760 then raise exception 'Result exceeds size limit'; end if;
   if p_analysis_result is not null then
     if task.operation not in ('analyse','report') or jsonb_typeof(p_analysis_result)<>'object' or octet_length(p_analysis_result::text)>20971520 then raise exception 'Invalid analysis projection'; end if;
@@ -342,15 +400,35 @@ begin
       values(rec.id,rec.user_id,coalesce(p_analysis_result->'summary','{}'::jsonb),coalesce(p_analysis_result->'display','{}'::jsonb),coalesce(p_analysis_result->'windows','{}'::jsonb),coalesce(p_analysis_result->'wave_manifest','{}'::jsonb),output_sha)
       on conflict(recording_id) do update set summary=excluded.summary,display=excluded.display,windows=excluded.windows,wave_manifest=excluded.wave_manifest,result_sha256=excluded.result_sha256,updated_at=now();
   end if;
-  update public.analysis_jobs set status=case when p_error_code is null then 'completed' else 'failed' end,result=p_result,result_sha256=coalesce(output_sha,current_sha),error_code=p_error_code,finished_at=now() where id=task.id;
+  update public.analysis_jobs set status=case when p_error_code is null then 'completed' when p_error_code='worker_restarted' and p_analysis_result is null then 'interrupted' else 'failed' end,result=p_result,result_sha256=coalesce(output_sha,current_sha),error_code=p_error_code,finished_at=now() where id=task.id;
   return true;
 end;
 $$;
 revoke all on function public.finish_analysis_job(uuid,uuid,jsonb,jsonb,text) from public,anon,authenticated;
 grant execute on function public.finish_analysis_job(uuid,uuid,jsonb,jsonb,text) to service_role;
 
--- Called only after the local worker acquires its exclusive process lock.
--- This marks interrupted work, never silently restarts numerical or paid AI work.
+-- Restart recovery must first fence an old in-flight completion under the same
+-- job lock. A rotated lease keeps deletion blocked until artifact rollback and
+-- explicit error completion. If completion won the lock, return its terminal
+-- row unchanged so recovery preserves the published artifact.
+create function public.fence_worker_job(p_job_id uuid,p_worker_id text)
+returns setof public.analysis_jobs language plpgsql security invoker set search_path = '' as $$
+declare task public.analysis_jobs;
+begin
+  if p_worker_id is null or char_length(p_worker_id) not between 1 and 128 then raise exception 'Invalid worker ID'; end if;
+  select * into task from public.analysis_jobs where id=p_job_id and worker_id=p_worker_id for update;
+  if not found then return; end if;
+  if task.status='running' then
+    update public.analysis_jobs set lease_token=gen_random_uuid() where id=task.id returning * into task;
+  end if;
+  return next task;
+end;
+$$;
+revoke all on function public.fence_worker_job(uuid,text) from public,anon,authenticated;
+grant execute on function public.fence_worker_job(uuid,text) to service_role;
+
+-- Retained only for migration compatibility. Its old terminal transition is
+-- unreachable by workers: it would release the deletion gate before rollback.
 create function public.recover_worker_jobs(p_worker_id text)
 returns integer language plpgsql security invoker set search_path = '' as $$
 declare affected integer;
@@ -361,8 +439,7 @@ begin
   return affected;
 end;
 $$;
-revoke all on function public.recover_worker_jobs(text) from public,anon,authenticated;
-grant execute on function public.recover_worker_jobs(text) to service_role;
+revoke all on function public.recover_worker_jobs(text) from public,anon,authenticated,service_role;
 
 -- Private files. Upload precedes metadata creation, so the immutable input path
 -- is restricted to the signed-in UUID but need not have a row yet.
@@ -380,6 +457,9 @@ create policy owned_file_read on storage.objects for select to authenticated usi
 );
 create policy owned_file_delete on storage.objects for delete to authenticated using (
   bucket_id in ('recordings','analysis-artifacts') and (storage.foldername(name))[1]=(select auth.uid())::text
+  and exists(select 1 from public.recordings r where r.user_id=(select auth.uid()) and r.id::text=(storage.foldername(name))[2]
+    and r.trashed_at is not null and r.deletion_started_at is not null
+    and not exists(select 1 from public.analysis_jobs j where j.recording_id=r.id and j.user_id=r.user_id and j.status in ('queued','running')))
 );
 
 commit;

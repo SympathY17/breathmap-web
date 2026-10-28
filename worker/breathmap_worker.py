@@ -175,8 +175,30 @@ class SupabaseCloud:
             return result
         raise WorkerError("cloud_claim_contract")
 
-    def recover(self, worker_id):
-        return self.rpc("recover_worker_jobs", {"p_worker_id": worker_id})
+    def fence(self, job_id, worker_id):
+        rows = self.rpc("fence_worker_job", {"p_job_id": identifier(job_id), "p_worker_id": worker_id})
+        if not isinstance(rows, list) or len(rows) > 1:
+            raise WorkerError("cloud_fence_contract")
+        return rows[0] if rows else None
+
+    def running_jobs(self, worker_id):
+        rows = []
+        cursor = None
+        for unused_page in range(100):
+            query = {"worker_id": "eq." + worker_id, "status": "eq.running", "select": "id", "order": "id", "limit": 100}
+            if cursor:
+                query["id"] = "gt." + cursor
+            page = self.request("GET", "/rest/v1/analysis_jobs?" + urlencode(query))
+            if not isinstance(page, list) or len(page) > 100:
+                raise WorkerError("cloud_recovery_contract")
+            ids = [identifier(row.get("id")) for row in page if isinstance(row, dict)]
+            if len(ids) != len(page) or ids != sorted(set(ids)) or cursor and ids and ids[0] <= cursor:
+                raise WorkerError("cloud_recovery_contract")
+            rows.extend(page)
+            if len(page) < 100:
+                return rows
+            cursor = ids[-1]
+        raise WorkerError("cloud_recovery_limit")
 
     def heartbeat(self, *, busy=False):
         self.request("POST", "/rest/v1/worker_heartbeat?on_conflict=id",
@@ -185,7 +207,7 @@ class SupabaseCloud:
 
     def get_recording(self, record_id):
         query = urlencode({"id": "eq." + identifier(record_id),
-                           "select": "id,user_id,file_path,file_name,file_size,input_sha256,trashed_at"})
+                           "select": "id,user_id,file_path,file_name,file_size,input_sha256,trashed_at,deletion_started_at"})
         rows = self.request("GET", "/rest/v1/recordings?" + query)
         return rows[0] if isinstance(rows, list) and len(rows) == 1 else None
 
@@ -204,6 +226,13 @@ class SupabaseCloud:
         self.request("POST", "/storage/v1/object/analysis-artifacts/" + quote(path, safe="/"),
                      data, raw=True, headers={"Content-Type": "application/json", "x-upsert": "true"})
 
+    def delete_artifact(self, path):
+        self.request("DELETE", "/storage/v1/object/analysis-artifacts", {"prefixes": [path]})
+
+    def read_artifact(self, path):
+        return self.request("GET", "/storage/v1/object/authenticated/analysis-artifacts/" + quote(path, safe="/"),
+                            maximum=MAX_JSON_BYTES, binary=True)
+
     def finish(self, job, result, *, analysis_result=None, error_code=None):
         return self.rpc("finish_analysis_job", {
             "p_job_id": job["id"], "p_lease_token": job["lease_token"],
@@ -219,10 +248,15 @@ class Ledger:
             guard(name)
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS bindings (cloud_id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,input_sha256 TEXT NOT NULL,local_id TEXT NOT NULL,result_sha256 TEXT)")
         self.db.execute("CREATE TABLE IF NOT EXISTS jobs (job_id TEXT PRIMARY KEY,operation TEXT NOT NULL,state TEXT NOT NULL,result_json TEXT,analysis_json TEXT,error_code TEXT,updated_at TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS attempts (job_id TEXT PRIMARY KEY REFERENCES jobs(job_id) ON DELETE CASCADE,cloud_id TEXT NOT NULL,owner_id TEXT NOT NULL,input_sha256 TEXT NOT NULL,local_id TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS artifact_writes (job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,path TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(job_id,path))")
+        if "content_sha256" not in {row["name"] for row in self.db.execute("PRAGMA table_info(artifact_writes)")}:
+            self.db.execute("ALTER TABLE artifact_writes ADD COLUMN content_sha256 TEXT")
         self.db.execute("INSERT OR IGNORE INTO settings VALUES ('worker_id',?)", (str(uuid.uuid4()),))
         self.db.commit()
         self.worker_id = self.db.execute("SELECT value FROM settings WHERE key='worker_id'").fetchone()[0]
@@ -243,6 +277,44 @@ class Ledger:
     def job(self, job_id):
         row = self.db.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
         return dict(row) if row else None
+
+    def attempt(self, job_id):
+        row = self.db.execute("SELECT * FROM attempts WHERE job_id=?", (job_id,)).fetchone()
+        return dict(row) if row else None
+
+    def save_attempt(self, job, record, local_id):
+        expected = (record["id"], record["user_id"], record["input_sha256"], local_id)
+        previous = self.attempt(job["id"])
+        if previous and tuple(previous[key] for key in ("cloud_id", "owner_id", "input_sha256", "local_id")) != expected:
+            raise WorkerError("immutable_attempt_changed")
+        self.db.execute("INSERT OR IGNORE INTO attempts VALUES (?,?,?,?,?)", (job["id"], *expected))
+        self.db.commit()
+
+    def promote_attempt(self, job, record, result_hash):
+        attempt = self.attempt(job["id"])
+        if not attempt:
+            return
+        if (attempt["cloud_id"], attempt["owner_id"], attempt["input_sha256"]) != (record["id"], record["user_id"], record["input_sha256"]):
+            raise WorkerError("immutable_attempt_changed")
+        previous = self.binding(record["id"])
+        if previous and (previous["owner_id"], previous["input_sha256"]) != (record["user_id"], record["input_sha256"]):
+            raise WorkerError("immutable_binding_changed")
+        self.db.execute("INSERT INTO bindings VALUES (?,?,?,?,?) ON CONFLICT(cloud_id) DO UPDATE SET local_id=excluded.local_id,result_sha256=excluded.result_sha256",
+                        (record["id"], record["user_id"], record["input_sha256"], attempt["local_id"], digest(result_hash)))
+        self.db.commit()
+
+    def artifact_write(self, job_id, path, state, content_hash=None):
+        self.db.execute("INSERT INTO artifact_writes(job_id,path,state,content_sha256) VALUES (?,?,?,?) ON CONFLICT(job_id,path) DO UPDATE SET state=excluded.state,content_sha256=coalesce(excluded.content_sha256,artifact_writes.content_sha256)",
+                        (job_id, path, state, content_hash))
+        self.db.commit()
+
+    def artifacts(self, job_id=None):
+        rows = self.db.execute("SELECT * FROM artifact_writes WHERE state!='published'" + (" AND job_id=?" if job_id else ""), (job_id,) if job_id else ()).fetchall()
+        return [dict(row) for row in rows]
+
+    def forget_artifact(self, job_id, path):
+        self.db.execute("DELETE FROM artifact_writes WHERE job_id=? AND path=?", (job_id, path))
+        self.db.commit()
 
     def save_job(self, job, state, result=None, analysis_result=None, error_code=None):
         self.db.execute("INSERT INTO jobs VALUES (?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET state=excluded.state,result_json=excluded.result_json,analysis_json=excluded.analysis_json,error_code=excluded.error_code,updated_at=excluded.updated_at",
@@ -286,7 +358,7 @@ class ExistingBackend:
 
     def recover_owned(self, ledger):
         """After acquiring the OS lock, stop only this adapter's saved jobs."""
-        for row in ledger.db.execute("SELECT local_id FROM bindings").fetchall():
+        for row in ledger.db.execute("SELECT local_id FROM bindings UNION SELECT local_id FROM attempts").fetchall():
             local_id = row["local_id"]
             try:
                 metadata = self.service.get_record(local_id)
@@ -327,6 +399,11 @@ class ExistingBackend:
             self.service._update(folder, state="analysis_available", stage="done", error=None)
         elif not metadata.get("analysis_available"):
             raise WorkerError("analysis_interrupted_review_required")
+
+    def needs_fresh_numeric(self, local_id, metadata):
+        if metadata.get("analysis_available"):
+            return (self.read_display(self.service, local_id).get("execution") or {}).get("status") in {"error", "unable_to_analyze"}
+        return metadata.get("state") in {"interrupted", "failed"}
 
     def enable_ai(self):
         if not self.client_ready:
@@ -407,7 +484,8 @@ class Processor:
         identifier(job.get("lease_token"))
         record = self.cloud.get_recording(job["recording_id"])
         if (not record or record.get("id") != job["recording_id"] or
-                record.get("user_id") != job["user_id"] or record.get("trashed_at") is not None):
+                record.get("user_id") != job["user_id"] or record.get("trashed_at") is not None or
+                record.get("deletion_started_at") is not None):
             raise WorkerError("record_unavailable")
         expected_path = job["user_id"] + "/" + job["recording_id"] + "/input.xlsx"
         if record.get("file_path") != expected_path:
@@ -432,6 +510,12 @@ class Processor:
         return record
 
     def local_record(self, job, record):
+        attempt = self.ledger.attempt(job["id"])
+        if attempt:
+            if (attempt["cloud_id"], attempt["owner_id"], attempt["input_sha256"]) != (record["id"], record["user_id"], record["input_sha256"]):
+                raise WorkerError("immutable_attempt_changed")
+            self.backend.verify(attempt["local_id"], record["input_sha256"])
+            return attempt["local_id"]
         binding = self.ledger.binding(record["id"])
         if binding:
             if binding["owner_id"] != record["user_id"] or binding["input_sha256"] != record["input_sha256"]:
@@ -439,7 +523,8 @@ class Processor:
             metadata = self.backend.verify(binding["local_id"], record["input_sha256"])
             if binding["result_sha256"] is not None and (metadata.get("analysis_binding") or {}).get("result_sha256") != binding["result_sha256"]:
                 raise WorkerError("local_result_changed")
-            return binding["local_id"]
+            if job["operation"] != "analyse" or not self.backend.needs_fresh_numeric(binding["local_id"], metadata):
+                return binding["local_id"]
         if job["operation"] != "analyse":
             raise WorkerError("analysis_not_available_on_host")
         content = self.cloud.download(record["file_path"])
@@ -447,15 +532,128 @@ class Processor:
             raise WorkerError("download_hash_mismatch")
         self.checked_record(job, record)
         local_id = self.backend.create(content)
-        self.ledger.bind(record, local_id)
+        self.ledger.save_attempt(job, record, local_id)
+        if not binding:
+            self.ledger.bind(record, local_id)
         return local_id
+
+    def rollback_artifacts(self, job_id):
+        """Delete exact journalled job-owned objects, never a previous overview."""
+        for entry in self.ledger.artifacts(job_id):
+            parts = entry["path"].split("/")
+            if (len(parts) != 4 or identifier(parts[0]) != parts[0] or
+                    identifier(parts[1]) != parts[1] or digest(parts[2]) != parts[2] or
+                    parts[3] != "overview-" + identifier(job_id) + ".json"):
+                raise WorkerError("artifact_journal_invalid")
+            if entry["state"] == "pending":
+                # A timed-out upload may still be writing. A unique path is
+                # uploaded once; only a complete matching read proves that
+                # write became observable. Absence is never proof of abort.
+                expected = entry.get("content_sha256")
+                try:
+                    actual = hashlib.sha256(self.cloud.read_artifact(entry["path"])).hexdigest()
+                except Exception:
+                    raise WorkerError("artifact_upload_outcome_unresolved") from None
+                if not expected or actual != expected:
+                    raise WorkerError("artifact_upload_content_unverified")
+                self.ledger.artifact_write(job_id, entry["path"], "uploaded", expected)
+            try:
+                self.cloud.delete_artifact(entry["path"])
+            except Exception:
+                # Keep both journal and running job until precise cleanup can
+                # be retried; a deletion must not race a terminal job marker.
+                raise WorkerError("artifact_cleanup_pending") from None
+            self.ledger.forget_artifact(job_id, entry["path"])
+
+    def committed(self, job, record, result, analysis):
+        if analysis is not None:
+            self.ledger.promote_attempt(job, record, analysis["result_sha256"])
+            if not self.ledger.attempt(job["id"]):
+                binding = self.ledger.binding(record["id"])
+                if binding:
+                    self.ledger.bind(record, binding["local_id"], analysis["result_sha256"])
+        for entry in self.ledger.artifacts(job["id"]):
+            self.ledger.artifact_write(job["id"], entry["path"], "published")
+        self.ledger.save_job(job, "completed", result, analysis)
+
+    def publish(self, job, record, result, analysis):
+        self.checked_record(job, record)
+        if analysis is not None:
+            attempt = self.ledger.attempt(job["id"])
+            binding = attempt or self.ledger.binding(record["id"])
+            if not binding or not isinstance(analysis.get("display"), dict):
+                raise WorkerError("prepared_analysis_binding_missing")
+            self.backend.verify(binding["local_id"], record["input_sha256"])
+            self.backend.validate_export(binding["local_id"], analysis["result_sha256"], analysis["display"])
+        self.ledger.save_job(job, "prepared", result, analysis)
+        try:
+            accepted = self.cloud.finish(job, result, analysis_result=analysis)
+        except Exception:
+            # The request may have committed before the response was lost.
+            # Keep immutable local output and object journal for reconciliation.
+            raise WorkerError("publication_outcome_unknown") from None
+        if accepted is not True:
+            self.rollback_artifacts(job["id"])
+            self.ledger.save_job(job, "failed", error_code="publish_cancelled_or_changed")
+            raise WorkerError("publish_cancelled_or_changed")
+        try:
+            self.committed(job, record, result, analysis)
+        except Exception:
+            raise WorkerError("publication_outcome_unknown") from None
+
+    def reconcile_artifacts(self):
+        """Fence each server lease before cleanup, including an in-flight finish."""
+        job_ids = {entry["job_id"] for entry in self.ledger.artifacts()}
+        job_ids.update(row["job_id"] for row in self.ledger.db.execute("SELECT job_id FROM jobs WHERE state='prepared'"))
+        job_ids.update(row["id"] for row in self.cloud.running_jobs(self.ledger.worker_id))
+        for job_id in job_ids:
+            cloud_job = self.cloud.fence(job_id, self.ledger.worker_id)
+            prior = self.ledger.job(job_id)
+            if cloud_job is None:
+                if self.cloud.get_job(job_id) is not None:
+                    raise WorkerError("publication_reconciliation_required")
+                self.rollback_artifacts(job_id)
+                if prior:
+                    self.ledger.save_job({"id": job_id, "operation": prior["operation"]}, "interrupted",
+                                         json.loads(prior["result_json"]) if prior["result_json"] else None,
+                                         json.loads(prior["analysis_json"]) if prior["analysis_json"] else None,
+                                         "publication_not_committed")
+                continue
+            if cloud_job.get("id") != job_id or cloud_job.get("worker_id") != self.ledger.worker_id:
+                raise WorkerError("cloud_fence_contract")
+            if cloud_job and cloud_job.get("status") == "completed":
+                result = json.loads(prior["result_json"]) if prior and prior["result_json"] else None
+                analysis = json.loads(prior["analysis_json"]) if prior and prior["analysis_json"] else None
+                if not result or cloud_job.get("result") != result:
+                    raise WorkerError("publication_reconciliation_required")
+                record = self.cloud.get_recording(cloud_job["recording_id"])
+                if record:
+                    self.committed(cloud_job, record, result, analysis)
+                else:
+                    for entry in self.ledger.artifacts(job_id):
+                        self.ledger.artifact_write(job_id, entry["path"], "published")
+                    self.ledger.save_job(cloud_job, "completed", result, analysis)
+            else:
+                if cloud_job.get("status") not in {"running", "failed", "interrupted"}:
+                    raise WorkerError("cloud_fence_contract")
+                if cloud_job.get("status") == "running":
+                    identifier(cloud_job.get("lease_token"))
+                self.rollback_artifacts(job_id)
+                if cloud_job.get("status") == "running":
+                    # The row lock + rotated lease has fenced any old HTTP
+                    # finish transaction before this exact object deletion.
+                    if self.cloud.finish(cloud_job, {}, error_code="worker_restarted") is not True:
+                        raise WorkerError("publication_reconciliation_required")
+                self.ledger.save_job(cloud_job, "interrupted",
+                                     json.loads(prior["result_json"]) if prior and prior["result_json"] else None,
+                                     json.loads(prior["analysis_json"]) if prior and prior["analysis_json"] else None,
+                                     "publication_not_committed")
 
     def export(self, job, record, local_id, *, overview=False):
         self.checked_record(job, record)
         self.backend.verify(local_id, record["input_sha256"])
         display = self.backend.display(local_id, record["id"])
         result_hash = digest(display.get("source_result_sha256"))
-        self.ledger.bind(record, local_id, result_hash)
         windows = self.backend.windows(local_id, record["id"], result_hash)
         manifest = {"schema": "breathmap-wave-manifest-1", "source_result_sha256": result_hash,
                     "on_demand": True, "overview": None,
@@ -466,16 +664,37 @@ class Processor:
             end = extent.get("analysis_end_s") or extent.get("duration_s")
             start = extent.get("analysis_start_s") or 0
             if type(start) in {int, float} and type(end) in {int, float} and 0 <= start < end <= 43200:
-                path = record["user_id"] + "/" + record["id"] + "/" + result_hash + "/overview.json"
+                path = record["user_id"] + "/" + record["id"] + "/" + result_hash + "/overview-" + job["id"] + ".json"
                 overview_ok = True
                 if overview:
                     try:
                         waveform = self.backend.waveform(local_id, record["id"], start, end, 5000)
-                        self.checked_record(job, record)
-                        self.cloud.artifact(path, waveform)
                     except Exception:
                         overview_ok = False
                         manifest["overview_error_code"] = "waveform_overview_unavailable"
+                    if overview_ok:
+                        self.checked_record(job, record)
+                        content_hash = hashlib.sha256(canonical(waveform)).hexdigest()
+                        written = next((entry for entry in self.ledger.artifacts(job["id"]) if entry["path"] == path), None)
+                        if written:
+                            if written.get("content_sha256") != content_hash or written["state"] != "uploaded":
+                                raise WorkerError("artifact_upload_content_unverified")
+                        else:
+                            self.ledger.artifact_write(job["id"], path, "pending", content_hash)
+                            try:
+                                self.cloud.artifact(path, waveform)
+                            except Exception as error:
+                                code = error.code if isinstance(error, WorkerError) else ""
+                                if re.fullmatch(r"cloud_http_4\d\d", code) and code != "cloud_http_408":
+                                    # A definite client rejection did not commit
+                                    # this unique upload; metrics can still save.
+                                    self.ledger.forget_artifact(job["id"], path)
+                                    overview_ok = False
+                                    manifest["overview_error_code"] = "waveform_overview_unavailable"
+                                else:
+                                    raise WorkerError("artifact_upload_outcome_unresolved") from None
+                            else:
+                                self.ledger.artifact_write(job["id"], path, "uploaded", content_hash)
                 if overview_ok:
                     manifest["overview"] = {"bucket": "analysis-artifacts", "path": path}
                 manifest["range"] = {"start_s": start, "end_s": end}
@@ -506,11 +725,9 @@ class Processor:
             if prior["state"] == "prepared":
                 result = json.loads(prior["result_json"])
                 analysis = json.loads(prior["analysis_json"]) if prior["analysis_json"] else None
-                if self.cloud.finish(job, result, analysis_result=analysis) is not True:
-                    raise WorkerError("publish_cancelled_or_changed")
-                self.ledger.save_job(job, "completed", result, analysis)
+                self.publish(job, record, result, analysis)
                 return result
-            if prior["state"] in {"running", "completed"}:
+            if prior["state"] in {"running", "completed", "failed", "interrupted"}:
                 raise WorkerError("job_already_executed_review_required")
         self.ledger.save_job(job, "running")
         local_id = self.local_record(job, record)
@@ -526,12 +743,13 @@ class Processor:
                 self.checked_record(job, record)
                 try:
                     self.backend.report(local_id, selected_language)
-                    analysis = self.export(job, record, local_id, overview=True)
-                    result["report_status"] = (analysis["display"].get("report") or {}).get("status", "unavailable")
                 except Exception:
                     # Preserve the completed numerical result. A separate explicit
                     # report job is the only way to retry a paid request.
                     result["report_status"] = "unavailable"
+                else:
+                    analysis = self.export(job, record, local_id, overview=True)
+                    result["report_status"] = (analysis["display"].get("report") or {}).get("status", "unavailable")
             elif payload.get("generate_report") not in {None, False}:
                 raise WorkerError("invalid_ai_request")
         elif operation == "report":
@@ -565,10 +783,7 @@ class Processor:
             result = {"waveform": self.backend.waveform(local_id, record["id"], start, end, maximum),
                       "result_sha256": current["source_result_sha256"]}
         self.checked_record(job, record)
-        self.ledger.save_job(job, "prepared", result, analysis)
-        if self.cloud.finish(job, result, analysis_result=analysis) is not True:
-            raise WorkerError("publish_cancelled_or_changed")
-        self.ledger.save_job(job, "completed", result, analysis)
+        self.publish(job, record, result, analysis)
         return result
 
     def one(self):
@@ -580,15 +795,24 @@ class Processor:
             return {"processed": 1, "status": "completed", "operation": job.get("operation")}
         except Exception as error:
             code = error.code if isinstance(error, WorkerError) else "worker_operation_failed"
-            prior = self.ledger.job(job.get("id"))
             # A completed/prepared paid action is never silently rerun after a
             # failed network write. Leave prepared locally for operator review.
-            if not prior or prior["state"] != "prepared":
+            if code not in {"publication_outcome_unknown", "artifact_cleanup_pending", "artifact_upload_outcome_unresolved", "artifact_upload_content_unverified"}:
                 try:
-                    self.cloud.finish(job, {}, error_code=code)
-                    self.ledger.save_job(job, "failed", error_code=code)
-                except Exception:
-                    pass
+                    self.rollback_artifacts(job["id"])
+                except WorkerError as cleanup:
+                    code = cleanup.code
+                    self.stop.set()
+                else:
+                    try:
+                        self.cloud.finish(job, {}, error_code=code)
+                        self.ledger.save_job(job, "failed", error_code=code)
+                    except Exception:
+                        self.stop.set()
+            else:
+                # Do not claim a later job while the current publication or
+                # rollback is unresolved. Restart reconciles before recovery.
+                self.stop.set()
             return {"processed": 1, "status": "needs_attention", "operation": job.get("operation"), "error_code": code}
 
 
@@ -647,7 +871,8 @@ def main(argv=None):
             # The OS lock proves that the previous local process has stopped.
             # Only mark interrupted; never requeue or repeat a paid action.
             backend.recover_owned(ledger)
-            cloud.recover(ledger.worker_id)
+            processor = Processor(cloud, backend, ledger, stop=stop)
+            processor.reconcile_artifacts()
             def heartbeat():
                 while not stop.is_set():
                     try:
@@ -657,7 +882,6 @@ def main(argv=None):
                     stop.wait(15)
             heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
             heartbeat_thread.start()
-            processor = Processor(cloud, backend, ledger, stop=stop)
             while not stop.is_set():
                 busy.set()
                 try:
