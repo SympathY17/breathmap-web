@@ -49,6 +49,7 @@ The actual Netlify website and hosted Supabase project were exercised with one s
 - A separate, consented question on the newly analysed synthetic recording completed through the website and displayed grounded answer text, exact values and clickable evidence references. No diagnosis was requested.
 - Moving the analysed recording to the recycle bin and restoring it passed. Rechecked overview, history and recycle-bin badges now retain the real analysis status. Permanent deletion was exercised in API acceptance; its irreversible browser confirmation was not submitted.
 - The upload success instructions now describe explicit user-triggered analysis, rather than the old Softr operator-approval workflow.
+- The final Auth release (`4c19f37f36687c15323506ad311f94f2d254d82f`, ready deploy `6ae187508ecc81a7fe1125b5`) was checked with an unusable recovery-code URL. It displays the explicit invalid/expired-link notice and a new-link request entry, rather than silently showing a password form.
 
 The browser account was signed out and removed. Cleanup deleted its two cloud recordings, linked diary, four private objects, two local aliases and three local job-ledger entries. Independent SQL confirmed all five temporary users from both API runs and browser acceptance had zero Auth/business/job/result/Storage resources, with no queued or running tasks. See `.tmp/final-cleanup-verification.json`. Local synthetic scientific artifacts were retained; no real user's credentials or participant data were used.
 
@@ -58,8 +59,7 @@ The hosted viewport override did not change the measured 1280-pixel viewport. Th
 
 ## Remaining acceptance, in order
 
-1. Verify the final missing-verifier/expired-link message after the final automatic deploy; its regression tests pass locally.
-2. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Email confirmation remains enabled.
-3. Actual phone/device acceptance remains for the user; do not treat desktop or fixture checks as a real-device result.
+1. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Email confirmation remains enabled.
+2. Actual phone/device acceptance remains for the user; do not treat desktop or fixture checks as a real-device result.
 
 No remaining item is marked completed merely because a matching source file exists.
