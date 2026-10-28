@@ -6,7 +6,21 @@ Standalone reconstruction of the existing BreathMap Softr application, using Rea
 
 Ten preserved application pages, seven wellbeing modules, twenty bilingual sleep-guide articles, native account pages, private XLSX storage, an owner-bound analysis queue, complete analysis windows, interval waveforms, report recovery and grounded questions.
 
-The frontend is source-ready. Cloud provisioning and browser acceptance must be recorded separately in `docs/acceptance.md`; a successful build does not prove a deployed workflow.
+The website is deployed at https://breathmap-sympathy.netlify.app. Production is public; deploy previews remain team-private. The source repository is private: https://github.com/SympathY17/breathmap-web. Actual checks and remaining limitations are recorded in `docs/acceptance.md`.
+
+## Use the website and analysis host
+
+Sign in, upload a compatible XLSX recording, then explicitly request analysis. Saved results remain available when the analysis host is off. New numerical, waveform-detail and AI requests need the current analysis computer to be running.
+
+On the configured Windows account, open PowerShell and run:
+
+```powershell
+& 'E:\Codex Data\学校课程\BreathMap_web\worker\Run-Worker.ps1'
+```
+
+Keep that process running while analysis is needed. Press Ctrl+C to stop after the active operation. No automatic startup service is installed. Credentials are already configured on this computer; do not configure them again just to start the worker.
+
+Email confirmation remains enabled. The project currently uses Supabase's limited default email service; ordinary users' confirmation and password-reset delivery still require custom SMTP. The project owner explicitly deferred that configuration. No real Softr accounts or participant recordings were migrated.
 
 ## Frontend
 
@@ -34,6 +48,6 @@ Website uploads save the original file only. Analysis is explicitly requested; A
 
 ## Deployment
 
-The Netlify project is `breathmap-sympathy` (ID `8b0b3927-4327-48d2-a34d-948d5e6613ce`). Team access protection remains enabled. Connect the private GitHub repository only after source checks; set the two client environment variables and use `npm run build` / `dist`. Password-reset and confirmation redirects must be configured for the final HTTPS URL in Supabase Auth.
+The Netlify project is `breathmap-sympathy` (ID `8b0b3927-4327-48d2-a34d-948d5e6613ce`), connected to `SympathY17/breathmap-web`, branch `main`, build `npm run build`, publish directory `dist`. The two public client variables are configured across deploy contexts. Supabase Auth Site URL is the production HTTPS origin; the allowed email redirects are its exact `/` and `/reset-password` URLs.
 
 No existing Softr health records are included in this repository. Use synthetic files for acceptance before deciding what existing data to migrate.

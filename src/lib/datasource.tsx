@@ -236,6 +236,52 @@ export function writableFields(table: TableName, input: Record<string, any>, sel
   return output;
 }
 
+function recordingMatchesSubmission(row: any, values: Record<string, any>, userId: string) {
+  if (!row || row.id !== values.id || row.user_id !== userId || values.user_id !== userId || row.trashed_at !== null) return false;
+  for (const key of ["file_path", "file_name", "input_sha256", "file_size", "title"]) if (row[key] !== values[key]) return false;
+  for (const key of ["details", "notes"]) if (row[key] !== (values[key] === undefined ? "" : values[key])) return false;
+  const submittedTime = typeof values.recorded_at === "string" ? Date.parse(values.recorded_at) : NaN;
+  const savedTime = typeof row.recorded_at === "string" ? Date.parse(row.recorded_at) : NaN;
+  return Number.isFinite(submittedTime) && submittedTime === savedTime;
+}
+
+function ambiguousRecordingInsert(error: any, status?: number) {
+  if (error?.code === "23505") return true;
+  if (typeof error?.code === "string" && /^(?:[0-9A-Z]{5}|PGRST\d+)$/.test(error.code)) return false;
+  return status === 0 || status === 408 || typeof status === "number" && status >= 500 || error instanceof TypeError || error?.name === "AbortError" || !error || !error.code && /network|fetch|connection|timeout|timed out|abort/i.test(String(error.message ?? error));
+}
+
+export async function insertRecordingWithRecovery(client: ReturnType<typeof requireSupabase>, values: Record<string, any>, userId: string) {
+  if (!UUID.test(userId) || values.user_id !== userId || !UUID.test(values.id ?? "") || values.file_path !== `${userId}/${values.id}/input.xlsx` || !SHA256.test(values.input_sha256 ?? "") || !Number.isSafeInteger(values.file_size) || values.file_size < 1 || values.file_size > 50 * 1024 * 1024) throw new Error("Invalid recording submission.");
+  let failure: any, response: any;
+  try {
+    response = await client.from("recordings").insert(values).select("*").single();
+  } catch (issue) {
+    if (!ambiguousRecordingInsert(issue)) throw issue;
+    failure = issue;
+  }
+  if (response) {
+    if (!response.error && response.data) return response.data;
+    failure = response.error ?? new Error("The recording save was not acknowledged.");
+    if (!ambiguousRecordingInsert(response.error, response.status)) checkFailure(failure);
+  }
+  // A committed INSERT can lose its response. Reuse its upload UUID, then read
+  // only that owner's row; never use upsert or overwrite a possibly newer edit.
+  let recovered: any;
+  try {
+    recovered = await client.from("recordings").select("id,user_id,title,details,notes,recorded_at,uploaded_at,file_path,file_name,file_size,input_sha256,trashed_at").eq("id", values.id).eq("user_id", userId).maybeSingle();
+  } catch {
+    throw new Error("The recording save could not be confirmed. Retry saving with the same uploaded file.");
+  }
+  if (recovered.error) throw new Error("The recording save could not be confirmed. Retry saving with the same uploaded file.");
+  if (!recovered.data) {
+    checkFailure(failure);
+    throw new Error("The recording save could not be confirmed. Retry saving with the same uploaded file.");
+  }
+  if (!recordingMatchesSubmission(recovered.data, values, userId)) throw new Error("This recording reference contains different saved data. Refresh your recording history before retrying.");
+  return recovered.data;
+}
+
 export function useRecordCreate({ from, fields }: { from: TableName; fields?: Selection }) {
   const user = useCurrentUser();
   const [isPending, setPending] = useState(false);
@@ -254,9 +300,14 @@ export function useRecordCreate({ from, fields }: { from: TableName; fields?: Se
         if (typeof file.filename !== "string" || file.filename.length < 1 || file.filename.length > 255) throw new Error("The file name must contain 1–255 characters.");
         Object.assign(values, { id: file.recordId, file_path: file.path, file_name: file.filename, file_size: file.size, input_sha256: file.sha256 });
       }
-      const response = await requireSupabase().from(from).insert(values).select("*").single();
-      checkFailure(response.error);
-      const [saved] = await mapRecords(from, [response.data], identity, false);
+      let row: any;
+      if (from === "recordings") row = await insertRecordingWithRecovery(requireSupabase(), values, identity.id);
+      else {
+        const response = await requireSupabase().from(from).insert(values).select("*").single();
+        checkFailure(response.error);
+        row = response.data;
+      }
+      const [saved] = await mapRecords(from, [row], identity, false);
       notify(from);
       return saved;
     } finally { lock.current = false; setPending(false); }

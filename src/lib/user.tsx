@@ -1,10 +1,22 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Session } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { supabase, isConfigured } from './supabase';
 
 type AppUser = { id: string; email: string; fullName: string; firstName: string; name: string };
 type AuthState = { session: Session | null; user: AppUser | null; loading: boolean; error: string };
 const AuthContext = createContext<AuthState>({ session: null, user: null, loading: true, error: '' });
+
+export async function restoreAuthSession(auth: Pick<SupabaseClient['auth'], 'initialize' | 'getSession'>) {
+  // getSession waits for initialization, but does not return a rejected callback's error.
+  const initialized = await auth.initialize();
+  const current = await auth.getSession();
+  return {
+    session: current.data.session,
+    error: initialized.error
+      ? 'This sign-in or password-reset link is invalid or has expired. Request a new link or sign in again. 登录或重置链接无效或已过期，请重新申请或登录。'
+      : current.error ? 'Your session could not be restored. Please sign in again.' : '',
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -14,13 +26,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    supabase.auth.getSession().then(({ data, error: issue }) => {
+    restoreAuthSession(supabase.auth).then(restored => {
       if (!active) return;
-      setSession(data.session); setError(issue ? 'Your session could not be restored. Please sign in again.' : ''); setLoading(false);
+      setSession(restored.session); setError(restored.error); setLoading(false);
     }).catch(() => { if (active) { setError('Your session could not be restored. Please sign in again.'); setLoading(false); } });
     const { data } = supabase.auth.onAuthStateChange((event, next) => {
       if (!active) return;
-      setSession(next); setLoading(false); setError('');
+      setSession(next);
+      if (event !== 'INITIAL_SESSION') { setLoading(false); setError(''); }
       if (event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/reset-password') window.location.replace('/reset-password' + window.location.hash);
     });
     return () => { active = false; data.subscription.unsubscribe(); };

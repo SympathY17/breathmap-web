@@ -7,7 +7,7 @@ Date: 2026-10-28 (Asia/Shanghai).
 | Area | Evidence | Scope |
 |---|---|---|
 | Production compilation | TypeScript + Vite passed | Ten copied pages, new Auth and connected analysis UI compile; no hosted login implied |
-| Frontend boundaries | 36 Vitest checks passed | UUID query filtering, safe writes, private downloads, zero/null, waveform gaps, result hashes and request acknowledgement |
+| Frontend boundaries | 52 Vitest checks passed | UUID filtering, safe writes, lost insert acknowledgement/recovery, rejected Auth callbacks, private downloads, zero/null, waveform gaps, result hashes and request acknowledgement |
 | Database execution | 37 PGlite PostgreSQL checks passed | Two disposable users; schema, RLS, grants, storage policy stubs, queue transitions, stale request/lease rejection and delete cleanup |
 | Worker | 30 Python checks passed | Ownership, hashes, recovery, source attribution, consent and modern/legacy credential headers |
 | Existing model integration | Synthetic 60-second input, isolated transport | Real model: 11 model windows, 2 statistics windows, 1 attention window; no real cloud or AI calls |
@@ -21,18 +21,26 @@ The browser fixture is under `.tmp`, visibly labelled read-only synthetic QA, an
 ## Cloud state
 
 - Netlify project created: `breathmap-sympathy`, ID `8b0b3927-4327-48d2-a34d-948d5e6613ce`.
-- First Netlify deployment is ready at `https://breathmap-sympathy.netlify.app` (deploy `6ae16eba0a40c50e23eaa95e`). Existing team login protection remains enabled. Git continuous deployment is not yet connected.
+- Netlify production is ready at `https://breathmap-sympathy.netlify.app`, connected to GitHub `main`. Deploy `6ae172978ad2ee759d482d25` includes the verified public frontend settings. A prior successful build lacked those settings; this was found in the actual browser and corrected through the project UI.
+- The user explicitly authorized opening the website. Only this project's production entry is public; previews remain private. A broad `all-projects` connector mutation was rejected and did not apply; the narrower per-project production setting was then verified in the UI.
 - Supabase project `hboyzyzzlzkgzubpsieo` is healthy in Singapore on the user-approved free plan. Two migrations were applied; all ten public tables have RLS. Security advisors returned no findings; performance advisors contain only unused-index information for the new empty tables.
-- Private GitHub repository `SympathY17/breathmap-web` exists. The connector was explicitly authorized for this repository only and read access is verified. Source upload is in progress.
+- Private GitHub repository `SympathY17/breathmap-web` contains the initial checked source commit `a2de81d6c4ca2b2a1416cd1ed4c2694eef55b5dc`. The Codex connector was explicitly authorized for this repository only. Follow-up boundary fixes and acceptance helpers are being synchronized.
 - The two frontend publishable settings are configured. The worker credential was saved with Windows encryption for this account; an actual cloud empty-queue poll completed successfully (`processed: 0`).
 - Existing backend, model, runtime records, Softr website and Obsidian files were not migrated or deleted.
+- Supabase Auth Site URL and its exact production `/` and `/reset-password` redirect URLs were saved and read back. Email confirmation was retained; custom SMTP is absent and the user explicitly deferred it.
+
+## Actual cloud API and worker acceptance
+
+The extended run passed 127 checks using two disposable, confirmed synthetic users and the known synthetic XLSX. Seven business domains, persisted edits, cross-owner denials, private files, immutable input metadata, task consent/idempotency, complete model/statistics/attention windows, overview and interval waveforms, recycling and permanent cleanup were exercised against the hosted project. Numeric output contained 11 valid model windows, 2 statistics windows and 1 attention window; the overview had 741 source points.
+
+Exactly one report and one question were requested. DeepSeek's official API completed their four evidence/explanation calls using `deepseek-flash`; report provenance and exact citation/value bindings passed, and numerical artifact hashes remained unchanged. Provider-failure preservation was checked by deterministic unit fault injection, not by creating extra paid failures.
+
+The two users and all their cloud resources were removed. Independent SQL confirmed zero remaining temporary Auth, business, job, result and Storage objects. The sanitized evidence is `.tmp/cloud-smoke-fbf48f74-5785-4b5b-897c-13676ee299d8.json`; reproducible source is `worker/cloud_smoke.py`. Newly generated synthetic local artifacts remain in the runtime sandbox for traceability. This proves API/worker behavior, not delivery of real email or browser completion of every form.
 
 ## Remaining acceptance, in order
 
-1. Push the checked source to GitHub and connect the existing Netlify project to continuous deployment.
-2. Configure Supabase Auth redirects for the final HTTPS address.
-3. Use disposable synthetic test users and XLSX files for actual cloud persistence, private downloads, two-account isolation, recycle/restore/delete, upload→analysis→complete windows→waveform interval. Record API and browser checks separately.
-4. Reuse the existing local DeepSeek configuration for a separately consented real report and question. Verify provenance and preservation of numerical results after provider failure.
-5. Verify real-device access and decide whether the website should remain team-protected or be made accessible for course testing. Email confirmation/reset delivery needs to work for the intended test addresses; the default mail service may not suffice.
+1. Publish the follow-up acknowledgement/Auth fixes and verify the resulting automatic deploy.
+2. Complete hosted-browser checks with a disposable synthetic account and remove it afterward. Record those separately from API acceptance.
+3. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Real phone/device acceptance also remains separate from viewport emulation.
 
 No remaining item is marked completed merely because a matching source file exists.
