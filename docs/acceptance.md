@@ -7,9 +7,9 @@ Date: 2026-10-28 (Asia/Shanghai).
 | Area | Evidence | Scope |
 |---|---|---|
 | Production compilation | TypeScript + Vite passed | Ten copied pages, new Auth and connected analysis UI compile; no hosted login implied |
-| Frontend boundaries | 52 Vitest checks passed | UUID filtering, safe writes, lost insert acknowledgement/recovery, rejected Auth callbacks, private downloads, zero/null, waveform gaps, result hashes and request acknowledgement |
+| Frontend boundaries | 55 Vitest checks passed | UUID filtering, safe writes, lost insert acknowledgement/recovery, rejected or unrecognized Auth callbacks, private downloads, zero/null, waveform gaps, result hashes and request acknowledgement |
 | Database execution | 37 PGlite PostgreSQL checks passed | Two disposable users; schema, RLS, grants, storage policy stubs, queue transitions, stale request/lease rejection and delete cleanup |
-| Worker | 30 Python checks passed | Ownership, hashes, recovery, source attribution, consent and modern/legacy credential headers |
+| Worker | 35 Python checks passed | Ownership, hashes, recovery, source attribution, consent, modern/legacy credential headers and scoped disposable-test cleanup |
 | Existing model integration | Synthetic 60-second input, isolated transport | Real model: 11 model windows, 2 statistics windows, 1 attention window; no real cloud or AI calls |
 | Read-only browser checks | Actual React pages with cached synthetic fixture | Home, recordings, upload, recycle bin, preferences, security, guide, seven wellbeing views, account/login/signup/password reset, report/analysis display |
 | Responsive checks | Browser viewport 320/390/768 px | Main pages showed no document horizontal overflow; analysis displayed three waveforms and actual fixture metrics |
@@ -21,10 +21,10 @@ The browser fixture is under `.tmp`, visibly labelled read-only synthetic QA, an
 ## Cloud state
 
 - Netlify project created: `breathmap-sympathy`, ID `8b0b3927-4327-48d2-a34d-948d5e6613ce`.
-- Netlify production is ready at `https://breathmap-sympathy.netlify.app`, connected to GitHub `main`. Deploy `6ae172978ad2ee759d482d25` includes the verified public frontend settings. A prior successful build lacked those settings; this was found in the actual browser and corrected through the project UI.
+- Netlify production is ready at `https://breathmap-sympathy.netlify.app`, connected to GitHub `main`. UI release `8710743f5c32349808114dcfb10874f3a6b2e76a` was verified ready in deploy `6ae1843ae720627a733e68bb`. A prior successful build lacked the public frontend settings; this was found in the actual browser and corrected through the project UI.
 - The user explicitly authorized opening the website. Only this project's production entry is public; previews remain private. A broad `all-projects` connector mutation was rejected and did not apply; the narrower per-project production setting was then verified in the UI.
-- Supabase project `hboyzyzzlzkgzubpsieo` is healthy in Singapore on the user-approved free plan. Two migrations were applied; all ten public tables have RLS. Security advisors returned no findings; performance advisors contain only unused-index information for the new empty tables.
-- Private GitHub repository `SympathY17/breathmap-web` contains the initial checked source commit `a2de81d6c4ca2b2a1416cd1ed4c2694eef55b5dc`. The Codex connector was explicitly authorized for this repository only. Follow-up boundary fixes and acceptance helpers are being synchronized.
+- Supabase project `hboyzyzzlzkgzubpsieo` is healthy in Singapore on the user-approved free plan. Two migrations were applied; all ten public tables have RLS. The final security advisor reports one Auth warning: leaked-password protection is disabled. Supabase makes that feature available on Pro and above, so the free plan was retained. See [password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). No other security lint was returned. Initial performance advice contained unused-index information for the new tables.
+- Private GitHub repository `SympathY17/breathmap-web` contains the full source and follow-up fixes. The Codex connector was explicitly authorized for this repository only. Source synchronization uses that connector; Git CLI transport from this host could not reach GitHub.
 - The two frontend publishable settings are configured. The worker credential was saved with Windows encryption for this account; an actual cloud empty-queue poll completed successfully (`processed: 0`).
 - Existing backend, model, runtime records, Softr website and Obsidian files were not migrated or deleted.
 - Supabase Auth Site URL and its exact production `/` and `/reset-password` redirect URLs were saved and read back. Email confirmation was retained; custom SMTP is absent and the user explicitly deferred it.
@@ -37,10 +37,29 @@ Exactly one report and one question were requested. DeepSeek's official API comp
 
 The two users and all their cloud resources were removed. Independent SQL confirmed zero remaining temporary Auth, business, job, result and Storage objects. The sanitized evidence is `.tmp/cloud-smoke-fbf48f74-5785-4b5b-897c-13676ee299d8.json`; reproducible source is `worker/cloud_smoke.py`. Newly generated synthetic local artifacts remain in the runtime sandbox for traceability. This proves API/worker behavior, not delivery of real email or browser completion of every form.
 
+## Hosted browser acceptance
+
+The actual Netlify website and hosted Supabase project were exercised with one separate disposable synthetic account. These checks used the production application, not the read-only fixture:
+
+- Native password sign-in, session restoration over full-page navigation and sign-out passed.
+- A synthetic XLSX passed the two-sheet format check, saved its private file and metadata, and remained unanalysed until **Start analysis** was clicked. The real worker then published 60-second results: 15.03 breaths/min, 5.1 L/min and 11/11 valid model windows.
+- The saved report, all 11 model windows, both statistics windows, and a report citation's corresponding interval were displayed. A separate 10–20 second waveform request returned 1,000 actual source rows across three signals.
+- Recording notes survived refresh. Recording title and collection details were edited through the live form; the original timestamp, notes, input hash and numerical-result hash remained unchanged. A dirty metadata draft survived background polling.
+- A linked sleep diary saved its times and ratings, and its rating appeared on the overview. Private original-file download produced a real browser download.
+- A separate, consented question on the newly analysed synthetic recording completed through the website and displayed grounded answer text, exact values and clickable evidence references. No diagnosis was requested.
+- Moving the analysed recording to the recycle bin and restoring it passed. Rechecked overview, history and recycle-bin badges now retain the real analysis status. Permanent deletion was exercised in API acceptance; its irreversible browser confirmation was not submitted.
+- The upload success instructions now describe explicit user-triggered analysis, rather than the old Softr operator-approval workflow.
+
+The browser account was signed out and removed. Cleanup deleted its two cloud recordings, linked diary, four private objects, two local aliases and three local job-ledger entries. Independent SQL confirmed all five temporary users from both API runs and browser acceptance had zero Auth/business/job/result/Storage resources, with no queued or running tasks. See `.tmp/final-cleanup-verification.json`. Local synthetic scientific artifacts were retained; no real user's credentials or participant data were used.
+
+The temporary read-only Vite preview and one-use handoff listeners were stopped. Unused magic-link/HTTP/credential-page test paths were removed; the reusable browser helper keeps only prepare, hidden-input test-password setup and scoped cleanup. The normal outbound worker remains online.
+
+The hosted viewport override did not change the measured 1280-pixel viewport. This run therefore does not count as a hosted mobile-size check; earlier local fixture checks and responsive CSS do not replace physical-device acceptance.
+
 ## Remaining acceptance, in order
 
-1. Publish the follow-up acknowledgement/Auth fixes and verify the resulting automatic deploy.
-2. Complete hosted-browser checks with a disposable synthetic account and remove it afterward. Record those separately from API acceptance.
-3. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Real phone/device acceptance also remains separate from viewport emulation.
+1. Verify the final missing-verifier/expired-link message after the final automatic deploy; its regression tests pass locally.
+2. Custom SMTP and actual confirmation/password-reset email delivery are deferred by the user. Email confirmation remains enabled.
+3. Actual phone/device acceptance remains for the user; do not treat desktop or fixture checks as a real-device result.
 
 No remaining item is marked completed merely because a matching source file exists.

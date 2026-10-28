@@ -1,7 +1,6 @@
-"""Prepare or clean one tracked synthetic browser-QA account; no inference/AI.
+"""Prepare, set a hidden fixture password, or clean a tracked synthetic QA user.
 
-The action link is never written to a file. The link action requires
---private-output and its caller must capture stdout privately, without echoing.
+No model/AI call, browser credential extraction or temporary HTTP server.
 """
 from __future__ import annotations
 
@@ -10,17 +9,12 @@ from contextlib import closing
 from datetime import datetime, timezone
 import getpass
 import hashlib
-from html import escape
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
-import os
 from pathlib import Path
 import re
 import sqlite3
 import sys
-import secrets
-import time
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import urlencode
 import uuid
 import warnings
 
@@ -174,117 +168,7 @@ def prepare(admin):
     save_state(state)
     return {"status": "prepared", "state_file": str(STATE), "user_id": owner, "recording_id": record_id,
             "synthetic_only": True, "model_runs": 0, "ai_calls": 0, "source_unchanged": True,
-            "result_sha256": result_hash, "magic_link_created": False}
-
-
-def link(admin):
-    state, user = require_state(admin)
-    if state.get("prepared") is not True:
-        raise WorkerError("browser_qa_not_prepared")
-    response = admin.request("POST", "/auth/v1/admin/generate_link?" + urlencode({"redirect_to": TARGET}),
-                             {"type": "magiclink", "email": user["email"]})
-    action = response.get("action_link") or (response.get("properties") or {}).get("action_link")
-    parsed = urlsplit(action or "")
-    target = parse_qs(parsed.query).get("redirect_to")
-    redirect = urlsplit(target[0]) if isinstance(target, list) and len(target) == 1 else urlsplit("")
-    if (parsed.scheme != "https" or parsed.netloc != urlsplit(admin.url).netloc or
-            parsed.path != "/auth/v1/verify" or redirect.scheme != "https" or
-            redirect.netloc != urlsplit(TARGET).netloc or redirect.path not in {"", "/"} or
-            redirect.query or redirect.fragment):
-        raise WorkerError("magic_link_redirect_mismatch")
-    return {"status": "private_link_ready", "user_id": state["user_id"],
-            "recording_id": state["recording_id"], "action_link": action,
-            "target_origin": TARGET, "warning": "Capture privately; never echo, persist or screenshot the action link."}
-
-
-def login(admin, *, password_page=False):
-    """One-use loopback handoff; credentials never reach stdout or files."""
-    action_link = page_bytes = None
-    if password_page:
-        state, user = require_state(admin)
-        password = secrets.token_urlsafe(36) + "Aa7!"
-        admin.request("PUT", "/auth/v1/admin/users/" + state["user_id"], {"password": password})
-        public = {"user_id": state["user_id"], "recording_id": state["recording_id"]}
-        page_bytes = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-                      "<meta name=\"referrer\" content=\"no-referrer\"><title>Disposable BreathMap QA credentials</title></head>"
-                      "<body><h1>Disposable synthetic QA account</h1>"
-                      "<p>One-use local handoff. Read values into private automation variables; never print or save them.</p>"
-                      "<p><label for=\"qa-email\">Email</label><input id=\"qa-email\" type=\"email\" readonly autocomplete=\"off\" value=\""
-                      + escape(user["email"], quote=True) + "\"></p>"
-                      "<p><label for=\"qa-password\">Password</label><input id=\"qa-password\" type=\"password\" readonly autocomplete=\"off\" value=\""
-                      + escape(password, quote=True) + "\"></p>"
-                      "<p>Close this page after privately reading both fields. No form or script is present.</p></body></html>").encode("utf-8")
-        password = None
-    else:
-        private = link(admin)
-        action_link = private["action_link"]
-        public = {"user_id": private["user_id"], "recording_id": private["recording_id"]}
-        private = None
-    admin._key = ""
-    for name in ("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
-        os.environ.pop(name, None)
-    path = "/" + secrets.token_urlsafe(32)
-    deadline = time.monotonic() + 300
-
-    class Server(HTTPServer):
-        consumed = False
-        def handle_error(self, unused_request, unused_address):
-            pass
-
-    class Handler(BaseHTTPRequestHandler):
-        def setup(self):
-            super().setup()
-            self.connection.settimeout(max(0.1, min(5.0, deadline - time.monotonic())))
-        def log_message(self, *unused):
-            pass
-        def log_error(self, *unused):
-            pass
-        def do_GET(self):
-            if (self.path != path or self.headers.get_all("Host", []) != [f"127.0.0.1:{self.server.server_port}"]
-                    or self.server.consumed or time.monotonic() >= deadline):
-                self.send_response(404)
-                self.send_header("Content-Length", "0")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.close_connection = True
-                return
-            self.server.consumed = True
-            self.send_response(200 if password_page else 303)
-            if not password_page:
-                self.send_header("Location", action_link)
-            else:
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("X-Frame-Options", "DENY")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Length", str(len(page_bytes)) if password_page else "0")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            if password_page:
-                self.wfile.write(page_bytes)
-            self.close_connection = True
-        def do_HEAD(self):
-            self.send_response(405)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-        do_POST = do_HEAD
-
-    with Server(("127.0.0.1", 0), Handler) as server:
-        server.timeout = 0.5
-        print(canonical({"status": "local_password_handoff_ready" if password_page else "local_handoff_ready", **public,
-                         "handoff_url": f"http://127.0.0.1:{server.server_port}{path}",
-                         "expires_in_seconds": 300, "one_use": True}).decode(), flush=True)
-        while not server.consumed and time.monotonic() < deadline:
-            server.handle_request()
-        if not server.consumed:
-            raise WorkerError("browser_qa_handoff_expired")
-    state = json.loads(STATE.read_text(encoding="utf-8"))
-    state["last_handoff_consumed_at_utc"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
-    return {"status": "local_handoff_consumed", **public, "listener_closed": True}
+            "result_sha256": result_hash}
 
 
 def set_password(admin):
@@ -388,20 +272,13 @@ def cleanup(admin):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "link", "login", "login-password", "set-password", "cleanup"))
-    parser.add_argument("--private-output", action="store_true")
+    parser.add_argument("action", choices=("prepare", "set-password", "cleanup"))
     args = parser.parse_args()
-    if args.action == "link" and not args.private_output:
-        parser.error("The link action requires --private-output and private stdout capture.")
-    if args.private_output and args.action != "link":
-        parser.error("Private output is used only for the link action.")
     try:
         admin = SupabaseCloud.from_environment()
         if admin.url != "https://hboyzyzzlzkgzubpsieo.supabase.co":
             raise WorkerError("browser_qa_project_mismatch")
-        output = {"prepare": prepare, "link": link, "login": login,
-                  "login-password": lambda service: login(service, password_page=True),
-                  "set-password": set_password,
+        output = {"prepare": prepare, "set-password": set_password,
                   "cleanup": cleanup}[args.action](admin)
         print(canonical(output).decode(), flush=True)
         return 0

@@ -22,6 +22,24 @@ describe('restoring an authentication callback', () => {
     } as any);
     expect(restored).toEqual({ session, error: '' });
   });
+  it.each([
+    'https://breathmap.example/reset-password?code=expired-fixture',
+    'https://breathmap.example/#access_token=unsupported-fixture&type=magiclink',
+  ])('explains an unrecognized callback without a restored session: %s', async callbackUrl => {
+    const restored = await restoreAuthSession({
+      initialize: vi.fn().mockResolvedValue({ error: null }),
+      getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+    } as any, callbackUrl);
+    expect(restored.error).toContain('Request a new link');
+  });
+  it('does not report a valid restored callback as expired', async () => {
+    const session = { user: { id: 'owned-user' } };
+    const restored = await restoreAuthSession({
+      initialize: vi.fn().mockResolvedValue({ error: null }),
+      getSession: vi.fn().mockResolvedValue({ data: { session }, error: null }),
+    } as any, 'https://breathmap.example/reset-password?code=valid-fixture');
+    expect(restored).toEqual({ session, error: '' });
+  });
   it('does not hide an independent session restoration failure', async () => {
     const restored = await restoreAuthSession({
       initialize: vi.fn().mockResolvedValue({ error: null }),

@@ -6,13 +6,16 @@ type AppUser = { id: string; email: string; fullName: string; firstName: string;
 type AuthState = { session: Session | null; user: AppUser | null; loading: boolean; error: string };
 const AuthContext = createContext<AuthState>({ session: null, user: null, loading: true, error: '' });
 
-export async function restoreAuthSession(auth: Pick<SupabaseClient['auth'], 'initialize' | 'getSession'>) {
+export async function restoreAuthSession(auth: Pick<SupabaseClient['auth'], 'initialize' | 'getSession'>, callbackUrl?: string) {
+  const url = callbackUrl ? new URL(callbackUrl) : null;
+  const fragment = new URLSearchParams(url?.hash.slice(1));
+  const hasCallback = !!url && (url.searchParams.has('code') || url.searchParams.has('error') || fragment.has('access_token') || fragment.has('error'));
   // getSession waits for initialization, but does not return a rejected callback's error.
   const initialized = await auth.initialize();
   const current = await auth.getSession();
   return {
     session: current.data.session,
-    error: initialized.error
+    error: initialized.error || hasCallback && !current.data.session
       ? 'This sign-in or password-reset link is invalid or has expired. Request a new link or sign in again. 登录或重置链接无效或已过期，请重新申请或登录。'
       : current.error ? 'Your session could not be restored. Please sign in again.' : '',
   };
@@ -26,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    restoreAuthSession(supabase.auth).then(restored => {
+    restoreAuthSession(supabase.auth, window.location.href).then(restored => {
       if (!active) return;
       setSession(restored.session); setError(restored.error); setLoading(false);
     }).catch(() => { if (active) { setError('Your session could not be restored. Please sign in again.'); setLoading(false); } });
