@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import { formatNumber as num, requestJob, resultIsCurrent, waveSegments, type Waveform } from './lib/analysis';
 import { useAuth } from './lib/user';
 import { PrivateFileLink } from './components/private-file-link';
+import './analysis-responsive.css';
 
 const LABELS: Record<string, [string, string]> = { normal: ['Normal breathing', '正常呼吸'], cont: ['Normal breathing', '正常呼吸'], continuous: ['Normal breathing', '正常呼吸'], no_inhale: ['Inspiratory interruption', '吸气中断'], no_exhale: ['Expiratory interruption', '呼气中断'], pause: ['No breathing', '无呼吸'], invalid: ['Unavailable', '不可用'], unknown: ['Uncertain', '不确定'], '正常呼吸': ['Normal breathing', '正常呼吸'], '呼吸暂停': ['No breathing', '无呼吸'], '呼吸障碍（未吸气）': ['Inspiratory interruption', '吸气中断'], '呼吸障碍（未呼气）': ['Expiratory interruption', '呼气中断'], '无法判断': ['Uncertain', '不确定'] };
 function localRecordingTime(value: string) {
@@ -12,14 +13,34 @@ function localRecordingTime(value: string) {
 }
 function WavePlot({ wave, column, title, unit }: { wave: Waveform; column: string; title: string; unit: string }) {
   const segments = waveSegments(wave, column), all = segments.flat();
+  const plotRef = useRef<SVGSVGElement>(null);
+  const [plotWidth, setPlotWidth] = useState(1100);
+  const hasPoints = all.length > 0;
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const resize = () => {
+      const width = plot.getBoundingClientRect().width;
+      if (width > 0) setPlotWidth(Math.max(200, Math.round(width)));
+    };
+    resize();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', resize);
+      return () => window.removeEventListener('resize', resize);
+    }
+    const observer = new ResizeObserver(resize);
+    observer.observe(plot);
+    return () => observer.disconnect();
+  }, [hasPoints]);
   if (!all.length) return <div><strong>{title}</strong><p className="result-note">—</p></div>;
   const values = all.map(p => p[1]), min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
   const a = wave.range.start_s, b = wave.range.end_s;
-  const xy = ([x, y]: [number, number]) => `${40 + (x - a) / (b - a) * 1010},${135 - (y - min) / span * 110}`;
-  return <div><strong>{title} <small>({unit})</small></strong><svg className="wave-plot" viewBox="0 0 1100 170" role="img" aria-label={`${title}, ${num(a)}–${num(b)} s`}>
-    <path d="M40 18V140H1060" fill="none" stroke="#b8d4ca" />
+  const left = 48, right = plotWidth - 18;
+  const xy = ([x, y]: [number, number]) => `${left + (x - a) / (b - a) * (right - left)},${135 - (y - min) / span * 110}`;
+  return <div className="wave-track"><strong>{title} <small>({unit})</small></strong><svg ref={plotRef} className="wave-plot" viewBox={`0 0 ${plotWidth} 170`} role="img" aria-label={`${title}, ${num(a)}–${num(b)} s`}>
+    <path d={`M${left} 18V140H${right}`} fill="none" stroke="#b8d4ca" />
     {segments.map((segment, i) => segment.length === 1 ? <circle key={i} cx={Number(xy(segment[0]).split(',')[0])} cy={Number(xy(segment[0]).split(',')[1])} r={1.5} fill="#26796d" /> : <polyline key={i} points={segment.map(xy).join(' ')} fill="none" stroke={column === 'sig_input_uV' ? '#6595ae' : column === 'expiratory_flow_l_min' ? '#6c9784' : '#276c68'} strokeWidth="1.5" />)}
-    <text x="4" y="28" fontSize="10" fill="#5e7b70">{num(max)}</text><text x="4" y="137" fontSize="10" fill="#5e7b70">{num(min)}</text><text x="40" y="158" fontSize="11" fill="#5e7b70">{num(a)} s</text><text x="1020" y="158" fontSize="11" fill="#5e7b70">{num(b)} s</text>
+    <text x="4" y="28" fontSize="11" fill="#5e7b70">{num(max)}</text><text x="4" y="137" fontSize="11" fill="#5e7b70">{num(min)}</text><text x={left} y="158" fontSize="11" fill="#5e7b70">{num(a)} s</text><text x={right} y="158" fontSize="11" textAnchor="end" fill="#5e7b70">{num(b)} s</text>
   </svg></div>;
 }
 function Claims({ answer, onEvidence }: { answer: any; onEvidence: (id: string, evidence?: any) => void }) {
@@ -158,8 +179,8 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   }
   if (loading) return <main className="app-loading" role="status">{t('Loading your record…', '正在读取记录…')}</main>;
   if (!record) return <main className="auth-shell"><section className="auth-card"><h1>{t('Record not found', '未找到记录')}</h1><p>{error || t('This record is unavailable in your account.', '当前账号无法访问这条记录。')}</p><a href="/recordings">{t('Saved recordings', '历史记录')}</a></section></main>;
-  return <main className="result-shell">
-    <header className="result-top"><a className="auth-brand" href="/"><Activity />BreathMap</a><nav className="result-links"><a href="/recordings"><ArrowLeft size={15} /> {t('Saved recordings', '历史记录')}</a><a href={`/wellbeing?view=diary&ctxRecord=${recordingId}`}>{t('Linked diary', '关联日记')}</a><a href="/account">{t('Account', '账号')}</a><button className="text-button" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'English' : '中文'}</button></nav></header>
+  return <main className="result-shell" lang={lang === 'zh' ? 'zh-CN' : 'en'}>
+    <header className="result-top"><a className="auth-brand" href="/"><Activity />BreathMap</a><nav className="result-links" aria-label={t('Recording navigation', '记录导航')}><a href="/recordings"><ArrowLeft size={15} /> {t('Saved recordings', '历史记录')}</a><a href={`/wellbeing?view=diary&ctxRecord=${recordingId}`}>{t('Linked diary', '关联日记')}</a><a href="/account">{t('Account', '账号')}</a><button className="text-button" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'English' : '中文'}</button></nav></header>
     <p className="eyebrow">{detailed ? t('DETAILED ANALYSIS', '详细分析') : t('RECORDING REPORT', '记录报告')}</p><h1>{record.title}</h1>
     <p className="result-subtitle">{new Date(record.recorded_at ?? record.uploaded_at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-GB')} · {t('Duration', '时长')} {num(display?.extent?.duration_s)} s</p>
     {error && <p role="alert" className="result-status error">{error}</p>}
@@ -175,22 +196,22 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     {jobs.filter(j => ['failed', 'interrupted'].includes(j.status)).slice(0, 1).map(job => <div className="result-status warn" key={job.id}>{t('A previous request needs attention.', '此前有一项请求需要处理。')} {job.error_code}<p className="result-note">{job.status === 'interrupted' ? t('The operator must review the interrupted task before it is run again.', '中断的任务需要操作员复核后再继续。') : t('You can retry the relevant action below. Saved numerical results are retained.', '可在下方重试对应操作，已有数值结果会保留。')}</p></div>)}
     {result && !usable && <div className="result-actions"><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'analyse')} onClick={() => void submit('analyse')}>{t('Retry analysis', '重试分析')}</button></div>}
     {usable && <>
-      {!detailed && <div className="result-actions"><a className="solid-button" href={`/analysis?recordId=${recordingId}`}>{t('Explore full waveforms and windows', '查看完整波形与窗口')} <ArrowRight size={15} /></a></div>}
+      {!detailed && <div className="result-actions"><a className="solid-button" href={`/analysis?recordId=${recordingId}`}>{t('View detailed analysis', '查看详细分析')} <ArrowRight size={15} /></a></div>}
       <section className="result-card" id="waveforms"><h2>{t('Synchronized waveforms', '同步波形')}</h2><p className="result-note">{t('Select an interval to inspect the saved signals. Changing the view does not recalculate your metrics.', '选择区间查看已保存信号。切换视图不会重新计算指标。')}</p>
         <form className="wave-controls" onSubmit={event => { event.preventDefault(); const a = Number(start), b = Number(end); if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > (display?.extent?.analysis_end_s ?? display?.extent?.duration_s ?? 43200)) { setError(t('Choose a valid interval within this recording.', '请选择记录范围内的有效区间。')); return; } void submit('waveform', { start: a, end: b, max_points: 5000 }); }}>
           <label>{t('Start (seconds)', '起点（秒）')}<input required type="number" min="0" step="0.01" value={start} onChange={e => setStart(e.target.value)} /></label><label>{t('End (seconds)', '终点（秒）')}<input required type="number" min="0" step="0.01" value={end} onChange={e => setEnd(e.target.value)} /></label><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'waveform')}>{t('Load interval', '载入区间')}</button>
         </form>
         {wave ? <div style={{ marginTop: 24 }}><WavePlot wave={wave} column="signal_mT" title={t('Magnetic signal', '磁场信号')} unit="mT" /><WavePlot wave={wave} column="expiratory_flow_l_min" title={t('Estimated expiratory flow', '估计呼气流量')} unit="L/min" /><WavePlot wave={wave} column="sig_input_uV" title={t('SIG differential voltage', 'SIG 差分电压')} unit="μV" /><p className="wave-caption">{t('Actual sampled source rows; gaps and invalid points are not joined or interpolated.', '显示实际抽取的源数据点；缺口和无效点不连线、不插值。')} {wave.sampling && `${num(wave.sampling.returned_points, 0)} / ${num(wave.sampling.source_rows_in_range, 0)} ${t('source rows', '源数据行')}`}</p></div> : <p className="result-note">{t('The saved waveform is loading, or select an interval to request it from the analysis host.', '正在读取已保存波形，也可选择区间向分析主机请求。')}</p>}
       </section>
-      {detailed && <section className="result-card"><h2>{t('Analysis windows', '分析窗口')}</h2><div className="result-tabs" role="tablist">{(['model', 'statistics', 'attention'] as const).map(key => <button role="tab" aria-selected={kind === key} className="result-tab" key={key} onClick={() => { setKind(key); setPage(0); }}>{key === 'model' ? t('Model', '模型') : key === 'statistics' ? t('Statistics', '统计') : t('Attention', '关注')}</button>)}</div>
-        <div className="result-table-wrap"><table className="result-table"><thead><tr><th>ID</th><th>{t('Interval (s)', '区间（秒）')}</th>{kind === 'statistics' ? <><th>{t('Rate (breaths/min)', '频率（次/分）')}</th><th>{t('Flow (L/min)', '流量（L/min）')}</th></> : <><th>{t('Pattern', '模式')}</th><th>{t('Model score', '模型分数')}</th></>}<th>{t('Waveform', '波形')}</th></tr></thead><tbody>{selectedRows.map((row: any) => <tr key={row.window_id} aria-selected={selected === row.window_id}><td>{row.window_id}</td><td>{num(row.start_s)}–{num(row.end_s)}</td>{kind === 'statistics' ? <><td>{num(row.frequency_bpm)}</td><td>{num(row.mean_expiratory_flow_l_min)}</td></> : <><td>{label(row.label)}</td><td>{num(row.top_score, 3)}</td></>}<td><button onClick={() => focusRow(row)}>{t('Select interval', '选择区间')}</button></td></tr>)}</tbody></table></div>
+      {detailed && <section className="result-card" id="analysis-windows"><h2>{t('Analysis windows', '分析窗口')}</h2><div className="result-tabs" role="tablist" aria-label={t('Window collections', '窗口分类')}>{(['model', 'statistics', 'attention'] as const).map(key => <button role="tab" aria-selected={kind === key} aria-controls="analysis-window-table" id={`window-tab-${key}`} className="result-tab" key={key} onClick={() => { setKind(key); setPage(0); }}>{key === 'model' ? t('Model', '模型') : key === 'statistics' ? t('Statistics', '统计') : t('Attention', '关注')}</button>)}</div>
+        <div className="result-table-wrap" id="analysis-window-table" role="tabpanel" aria-labelledby={`window-tab-${kind}`}><table className="result-table" role="table" aria-label={t('Saved analysis windows', '已保存的分析窗口')}><thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">ID</th><th role="columnheader" scope="col">{t('Interval (s)', '区间（秒）')}</th>{kind === 'statistics' ? <><th role="columnheader" scope="col">{t('Rate (breaths/min)', '频率（次/分）')}</th><th role="columnheader" scope="col">{t('Flow (L/min)', '流量（L/min）')}</th></> : <><th role="columnheader" scope="col">{t('Pattern', '模式')}</th><th role="columnheader" scope="col">{t('Model score', '模型分数')}</th></>}<th role="columnheader" scope="col">{t('Waveform', '波形')}</th></tr></thead><tbody role="rowgroup">{selectedRows.map((row: any) => <tr role="row" key={row.window_id} aria-selected={selected === row.window_id}><td role="cell" data-label="ID">{row.window_id}</td><td role="cell" data-label={t('Interval (s)', '区间（秒）')}>{num(row.start_s)}–{num(row.end_s)}</td>{kind === 'statistics' ? <><td role="cell" data-label={t('Rate (breaths/min)', '频率（次/分）')}>{num(row.frequency_bpm)}</td><td role="cell" data-label={t('Flow (L/min)', '流量（L/min）')}>{num(row.mean_expiratory_flow_l_min)}</td></> : <><td role="cell" data-label={t('Pattern', '模式')}>{label(row.label)}</td><td role="cell" data-label={t('Model score', '模型分数')}>{num(row.top_score, 3)}</td></>}<td role="cell" data-label={t('Waveform', '波形')}><button onClick={() => focusRow(row)}>{t('Select interval', '选择区间')}</button></td></tr>)}</tbody></table></div>
         {rows.length === 0 && <p>{t('No saved windows in this collection.', '此分类暂无已保存窗口。')}</p>}
-        <div className="result-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t('Previous', '上一页')}</button><span>{page + 1} / {Math.max(1, Math.ceil(rows.length / 20))} · {rows.length} {t('windows', '个窗口')}</span><button disabled={(page + 1) * 20 >= rows.length} onClick={() => setPage(p => p + 1)}>{t('Next', '下一页')}</button></div><p className="result-note">{t('Model scores are not accuracy or disease probability. Window boundaries do not identify exact event boundaries.', '模型分数不代表准确率或患病概率，窗口边界不代表精确事件边界。')}</p>
+        <div className="result-actions result-pagination"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t('Previous', '上一页')}</button><span aria-live="polite">{page + 1} / {Math.max(1, Math.ceil(rows.length / 20))} · {rows.length} {t('windows', '个窗口')}</span><button disabled={(page + 1) * 20 >= rows.length} onClick={() => setPage(p => p + 1)}>{t('Next', '下一页')}</button></div><p className="result-note">{t('Model scores are not accuracy or disease probability. Window boundaries do not identify exact event boundaries.', '模型分数不代表准确率或患病概率，窗口边界不代表精确事件边界。')}</p>
       </section>}
       <section className="result-card"><h2>{t('Your recording explained', '本次记录解读')}</h2>
         {report?.status === 'ready' ? <><span className="source-tag">{report.source === 'offline_stub' || report.source === 'simulated' ? t('Simulated AI output', '模拟 AI 输出') : report.source === 'deepseek' || report.source === 'live' ? 'DeepSeek' : t('Saved explanation — check source', '已保存解读 · 请核对来源')}</span><Claims answer={report} onEvidence={focusEvidence} /></> : <p>{t('A saved explanation is not available yet. Your numerical results remain accessible.', '尚无可用解读，已有数值结果仍可查看。')}</p>}
         <label className="result-consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>{t('Allow the analysis host to send this recording’s structured analysis and my question to DeepSeek for explanation. Raw files, diary entries and account passwords are not sent.', '允许分析主机将本条记录的结构化分析与我的问题发送给 DeepSeek，以生成解读。不发送原始文件、日记或账号密码。')}</span></label>
-        <div className="result-actions"><button disabled={busy || !consent || pending.some(j => j.operation === 'report')} onClick={() => void submit('report')}>{report?.status === 'ready' ? t('Review saved report / retry if needed', '查看已存报告／必要时重试') : t('Generate or retry explanation', '生成或重试解读')}</button></div>
+        <div className="result-actions"><button disabled={busy || !consent || pending.some(j => j.operation === 'report')} onClick={() => void submit('report')}>{report?.status === 'ready' ? t('Review saved explanation', '查看已存解读') : t('Generate or retry explanation', '生成或重试解读')}</button></div>
         <h3>{t('Ask about this recording', '询问本次记录')}</h3><form onSubmit={event => { event.preventDefault(); if (question.trim()) void submit('chat', { question: question.trim() }); }}><textarea aria-label={t('Your question', '你的问题')} rows={3} maxLength={2000} placeholder={t('What does this highlighted window mean?', '这个窗口的结果代表什么？')} value={question} onChange={e => setQuestion(e.target.value)} /><div className="result-actions"><button className="solid-button" disabled={busy || !consent || !question.trim() || pending.some(j => j.operation === 'chat')}>{t('Send question', '发送问题')}</button></div></form>
         {jobs.filter(j => j.operation === 'chat' && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash && (j.status !== 'completed' || j.result?.result_sha256 === hash)).slice().reverse().map(job => <div className="message-item" key={job.id}><strong>{t('You', '我')}</strong><p>{job.payload?.question}</p><strong>{t('Recording assistant', '记录助手')}</strong>{job.status === 'completed' ? <Claims answer={job.result?.answer} onEvidence={focusEvidence} /> : <p>{job.status === 'queued' ? t('Waiting for the analysis host…', '等待分析主机…') : job.status === 'running' ? t('Preparing an answer…', '正在生成回答…') : t('No answer was saved. You can try again.', '未能保存回答，可以重试。')}</p>}</div>)}
       </section>

@@ -1,0 +1,214 @@
+/* Hallmark · existing BreathMap Workbench · soft teal · responsive adaptation
+ * pre-emit critique: P4 H4 E4 S5 R5 V4
+ * Mobile cards and readable waveform axes; existing scientific outputs are unchanged.
+ */
+main.result-shell {
+  --result-surface: #fff;
+  --result-soft: #f7fbf9;
+  --result-muted: #5c7771;
+  --result-selected: #d9ede6;
+  padding: 1.25rem 1rem calc(6rem + env(safe-area-inset-bottom));
+  min-width: 0;
+}
+
+.result-shell .result-top {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+.result-shell .auth-brand { align-self: flex-start; }
+.result-shell .result-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .25rem .75rem;
+  font-size: .8125rem;
+}
+.result-shell .result-links a,
+.result-shell .result-links button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .375rem;
+  min-height: 2.75rem;
+  width: fit-content;
+  padding: .375rem 0;
+  white-space: nowrap;
+}
+.result-shell .result-links svg { flex: none; }
+.result-shell h1,
+.result-shell h2,
+.result-shell h3 { min-width: 0; overflow-wrap: anywhere; }
+.result-shell .result-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  margin-block: 1.5rem;
+}
+.result-shell .result-metric { padding-block: 1rem; min-width: 0; }
+.result-shell .result-metric:last-child { grid-column: 1 / -1; }
+.result-shell .result-metric span { font-size: .8125rem; line-height: 1.55; }
+.result-shell .result-metric strong { font-size: 1.75rem; margin-block: .625rem .25rem; }
+.result-shell .result-metric small { display: block; font-size: .75rem; line-height: 1.6; }
+.result-shell .result-card { padding: 1rem; margin-top: 1rem; }
+.result-shell .result-card h2 { font-size: 1.25rem; line-height: 1.4; }
+.result-shell .result-card p,
+.result-shell .result-status { overflow-wrap: anywhere; }
+.result-shell .result-actions { gap: .625rem; }
+.result-shell .result-actions button,
+.result-shell .result-actions > a,
+.result-shell .result-card > button,
+.result-shell .result-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .375rem;
+  min-height: 2.75rem;
+  max-width: 100%;
+  font-size: .8125rem;
+  white-space: nowrap;
+}
+.result-shell .result-actions button { padding-inline: .75rem; }
+.result-shell .result-card input:not([type='checkbox']),
+.result-shell .result-card select,
+.result-shell .result-card textarea {
+  min-height: 2.75rem;
+  min-width: 0;
+  width: 100%;
+  font-size: 1rem;
+}
+.result-shell .result-consent input { flex: none; width: 1.125rem; height: 1.125rem; }
+.result-shell .result-consent span { min-width: 0; }
+.result-shell .wave-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+.result-shell .wave-controls label { min-width: 0; font-size: .8125rem; }
+.result-shell .wave-controls button { grid-column: 1 / -1; min-height: 2.75rem; white-space: nowrap; }
+.result-shell .wave-track { min-width: 0; margin-top: 1rem; }
+.result-shell .wave-track > strong { display: block; font-size: .8125rem; line-height: 1.6; }
+.result-shell .wave-plot { height: 170px; width: 100%; max-width: 100%; }
+.result-shell #waveforms { scroll-margin-block-start: 1rem; }
+.result-shell .result-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .375rem;
+}
+.result-shell .result-tab { padding-inline: .375rem; }
+
+/* Keep the same table and column relationships; only its small-screen presentation changes. */
+.result-shell .result-table-wrap { overflow: visible; }
+.result-shell .result-table { display: block; width: 100%; }
+.result-shell .result-table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.result-shell .result-table tbody { display: grid; gap: .75rem; }
+.result-shell .result-table tbody tr {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .25rem 1rem;
+  padding: .5rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: .625rem;
+  background: var(--result-surface);
+}
+.result-shell .result-table tbody tr[aria-selected='true'] {
+  background: var(--result-selected);
+  border-color: var(--teal);
+}
+.result-shell .result-table tbody td {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  align-items: flex-start;
+  padding: .625rem 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: .8125rem;
+  line-height: 1.55;
+  border-bottom: 0;
+}
+.result-shell .result-table tbody td:last-child { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); }
+.result-shell .result-table td::before { content: attr(data-label); color: var(--result-muted); }
+.result-shell .result-table button {
+  justify-self: start;
+  min-height: 2.75rem;
+  padding: .375rem 0;
+  font-size: .75rem;
+  white-space: nowrap;
+  text-underline-offset: .2em;
+}
+.result-shell .result-pagination { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.result-shell .result-pagination > span { grid-column: 1 / -1; grid-row: 2; text-align: center; font-size: .8125rem; }
+.result-shell .result-pagination > button { grid-row: 1; }
+
+@media (min-width: 40rem) {
+  main.result-shell { padding-inline: 1.5rem; }
+  .result-shell .result-card { padding: 1.5rem; margin-top: 1.5rem; }
+  .result-shell .result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+  .result-shell .result-metric:last-child { grid-column: auto; }
+  .result-shell .wave-controls { grid-template-columns: minmax(0, 9rem) minmax(0, 9rem) max-content; }
+  .result-shell .wave-controls button { grid-column: auto; }
+  .result-shell .result-tabs { display: flex; flex-wrap: wrap; gap: .625rem; }
+  .result-shell .result-tab { padding-inline: 1rem; }
+  .result-shell .result-pagination { display: flex; }
+  .result-shell .result-pagination > span { font-size: .875rem; }
+  .result-shell .result-actions button,
+  .result-shell .result-actions > a { font-size: .875rem; }
+}
+
+@media (min-width: 48rem) {
+  .result-shell .result-top { flex-direction: row; align-items: center; }
+  .result-shell .result-links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: flex-end; }
+  .result-shell .result-table-wrap { overflow-x: auto; }
+  .result-shell .result-table { display: table; }
+  .result-shell .result-table thead {
+    display: table-header-group;
+    position: static;
+    width: auto;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: normal;
+  }
+  .result-shell .result-table tbody { display: table-row-group; }
+  .result-shell .result-table tbody tr { display: table-row; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .result-shell .result-table th,
+  .result-shell .result-table tbody td {
+    display: table-cell;
+    padding: .75rem;
+    white-space: normal;
+    overflow-wrap: normal;
+    border-bottom: 1px solid var(--line);
+  }
+  .result-shell .result-table td::before { content: none; }
+  .result-shell .result-table button { font-size: .8125rem; }
+}
+
+@media (min-width: 64rem) {
+  main.result-shell { padding: 1.875rem 2.5rem 4.375rem; }
+  .result-shell .result-card { padding: 1.625rem; }
+  .result-shell .result-links { gap: 1.25rem; font-size: .875rem; }
+  .result-shell .result-metric { padding-block: 1.5rem; }
+  .result-shell .result-metric strong { font-size: 2.125rem; }
+}
+
+@media (pointer: coarse) {
+  .result-shell .result-actions button,
+  .result-shell .result-links a,
+  .result-shell .result-links button,
+  .result-shell .result-tab,
+  .result-shell .result-table button { min-height: 3rem; }
+}

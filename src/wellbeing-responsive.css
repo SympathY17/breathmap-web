@@ -1,0 +1,446 @@
+/* Hallmark · existing BreathMap workbench / soft teal · responsive adaptation
+ * Uses inherited design tokens; diary, planning and review keep their own workflows.
+ * Pre-emit critique: P4 H4 E4 S5 R5 V4
+ */
+.bm-app .wm-workspace {
+  min-width: 0;
+}
+
+.bm-app .wm-workspace .wm-context-bar {
+  align-items: flex-start;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.bm-app .wm-workspace .wm-small-navigation {
+  display: grid;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-lg);
+}
+
+.bm-app .wm-workspace .wm-small-navigation label {
+  color: var(--color-muted);
+  font-size: var(--text-base-sm);
+  font-weight: 600;
+}
+
+.bm-app .wm-workspace .wm-small-navigation select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: var(--space-sm) var(--space-md);
+  border: var(--rule-width) solid var(--color-input);
+  border-radius: var(--radius-control);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.bm-app .wm-workspace > .wm-workspace-layout > .wm-section-nav {
+  display: none;
+}
+
+.bm-app .wm-workspace .wm-j-root {
+  gap: var(--space-lg);
+  padding-block: var(--space-sm) var(--space-lg);
+}
+
+.bm-app .wm-workspace :is(.wm-j-heading, .wm-j-sectionhead, .wm-r-section-line, .wm-v-section-head) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.bm-app .wm-workspace :is(.wm-j-split, .wm-j-fields, .wm-j-compare, .wm-r-form-grid, .wm-r-player-fields, .wm-r-routine-layout, .wm-r-relax-layout, .wm-v-workspace, .wm-v-reaction-layout, .wm-v-form-grid) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-lg);
+}
+
+.bm-app .wm-workspace :is(.wm-j-panel, .wm-r-player, .wm-r-editor, .wm-v-editor, .wm-v-task-panel, .wm-v-result, .wm-r-commitment) {
+  padding: var(--space-md);
+}
+
+.bm-app .wm-workspace :is(.wm-j-filters, .wm-j-filter) {
+  width: 100%;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.bm-app .wm-workspace .wm-j-filter input,
+.bm-app .wm-workspace .wm-j-filter select {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bm-app .wm-workspace :is(.wm-j-field, .wm-r-module, .wm-v-module) :is(input:not([type=checkbox]):not([type=radio]), textarea, select),
+.bm-app .wm-workspace .wm-j-filter :is(input, select) {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--text-body);
+}
+
+.bm-app .wm-workspace :is(.wm-j-field, .wm-r-module, .wm-v-module) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select:not([multiple])) {
+  min-height: 48px;
+}
+
+.bm-app .wm-workspace :is(.wm-j-actions, .wm-r-actions, .wm-r-save-row, .wm-v-actions) {
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.bm-app .wm-workspace :is(.wm-j-button, .wm-j-link, .wm-r-module .bm-button, .wm-v-module .bm-button, .wm-v-text-button) {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.bm-app .wm-workspace :is(.wm-j-entryhead, .wm-j-context-nav) {
+  flex-wrap: wrap;
+}
+
+.bm-app .wm-workspace .wm-j-context .wm-j-actions .wm-j-link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bm-app .wm-workspace :is(.wm-j-entryhead > div, .wm-j-entrynote, .wm-j-context, .wm-j-next, .wm-r-template-list button, .wm-v-saved) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* These are content-selection cards, rather than one-line action buttons. */
+.bm-app .wm-workspace :is(.wm-r-template-list button, .wm-v-saved) {
+  white-space: normal;
+}
+
+.bm-app .wm-workspace .wm-j-record-options {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.bm-app .wm-workspace .wm-j-record-options legend {
+  margin-block-end: var(--space-xs);
+  font-size: var(--text-base-sm);
+  font-weight: 650;
+}
+
+.bm-app .wm-workspace .wm-j-record-options > div {
+  display: grid;
+  max-height: 16rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-control);
+  border: var(--rule-width) solid var(--color-input);
+}
+
+.bm-app .wm-workspace .wm-j-record-options > div:empty {
+  display: none;
+}
+
+.bm-app .wm-workspace .wm-j-record-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  min-height: 48px;
+  cursor: pointer;
+  border-block-end: var(--rule-width) solid var(--color-rule);
+}
+
+.bm-app .wm-workspace .wm-j-record-options label:last-child {
+  border-block-end: 0;
+}
+
+.bm-app .wm-workspace .wm-j-record-options label:has(input:checked) {
+  background: var(--color-tint);
+}
+
+.bm-app .wm-workspace .wm-j-record-options input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: var(--space-2xs) 0 0;
+  accent-color: var(--color-accent);
+}
+
+.bm-app .wm-workspace .wm-j-record-options label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bm-app .wm-workspace .wm-j-record-options small {
+  display: block;
+  margin-block-start: var(--space-2xs);
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.bm-app .wm-workspace .wm-j-chart text {
+  font-size: 24px;
+}
+
+/* Keep the table and its column headers available to assistive technology. */
+.bm-app .wm-workspace .wm-j-tablewrap {
+  overflow: visible;
+}
+
+.bm-app .wm-workspace .wm-j-table {
+  display: block;
+}
+
+.bm-app .wm-workspace .wm-j-table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.bm-app .wm-workspace .wm-j-table tbody {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.bm-app .wm-workspace .wm-j-table tbody tr {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: var(--rule-width) solid var(--color-rule);
+  border-radius: var(--radius-control);
+}
+
+.bm-app .wm-workspace .wm-j-table tbody :is(th, td) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+
+.bm-app .wm-workspace .wm-j-table tbody th {
+  grid-column: 1 / -1;
+}
+
+.bm-app .wm-workspace .wm-j-table tbody :is(th, td)::before {
+  content: attr(data-label);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.bm-app .wm-workspace .wm-r-templates {
+  padding-inline-end: 0;
+  padding-block-end: var(--space-lg);
+  border-inline-end: 0;
+  border-block-end: var(--rule-width) solid var(--color-rule);
+}
+
+.bm-app .wm-workspace .wm-r-template-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bm-app .wm-workspace .wm-r-plan-strip {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.bm-app .wm-workspace .wm-r-plan-strip > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.bm-app .wm-workspace .wm-r-plan-strip span {
+  margin: 0;
+}
+
+.bm-app .wm-workspace .wm-r-days > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(3.5rem, 1fr));
+}
+
+.bm-app .wm-workspace .wm-r-days > div > label {
+  min-height: 44px;
+  justify-content: center;
+  padding-inline: var(--space-xs);
+}
+
+.bm-app .wm-workspace .wm-r-guide {
+  border-inline-start: 0;
+  border-block-start: var(--rule-width) solid var(--color-rule);
+  padding: var(--space-lg) 0 0;
+}
+
+.bm-app .wm-workspace .wm-v-library {
+  order: 2;
+}
+
+.bm-app .wm-workspace .wm-v-explanation dl {
+  display: block;
+}
+
+.bm-app .wm-workspace .wm-v-explanation dt {
+  margin-block-start: var(--space-md);
+}
+
+.bm-app .wm-workspace .wm-v-explanation dd {
+  margin-block-start: var(--space-xs);
+}
+
+.bm-app .wm-workspace .wm-v-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bm-app .wm-workspace .wm-v-trial-details ol {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 40rem) {
+  .bm-app .wm-workspace .wm-small-navigation {
+    display: none;
+  }
+
+  .bm-app .wm-workspace > .wm-workspace-layout > .wm-section-nav {
+    display: flex;
+    gap: var(--space-xs);
+  }
+
+  .bm-app .wm-workspace .wm-context-bar {
+    align-items: center;
+  }
+
+  .bm-app .wm-workspace :is(.wm-j-panel, .wm-r-player, .wm-r-editor, .wm-v-editor, .wm-v-task-panel, .wm-v-result, .wm-r-commitment) {
+    padding: var(--space-lg);
+  }
+
+  .bm-app .wm-workspace :is(.wm-j-fields, .wm-j-compare, .wm-r-form-grid, .wm-r-player-fields, .wm-v-form-grid, .wm-r-template-list) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bm-app .wm-workspace .wm-j-chart text {
+    font-size: 14px;
+  }
+
+  .bm-app .wm-workspace .wm-j-tablewrap {
+    overflow: auto;
+  }
+
+  .bm-app .wm-workspace .wm-j-table {
+    display: table;
+  }
+
+  .bm-app .wm-workspace .wm-j-table thead {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    overflow: visible;
+  }
+
+  .bm-app .wm-workspace .wm-j-table tbody {
+    display: table-row-group;
+  }
+
+  .bm-app .wm-workspace .wm-j-table tbody tr {
+    display: table-row;
+  }
+
+  .bm-app .wm-workspace .wm-j-table tbody :is(th, td) {
+    display: table-cell;
+    padding: var(--space-sm);
+    border-block-end: var(--rule-width) solid var(--color-rule);
+  }
+
+  .bm-app .wm-workspace .wm-j-table tbody :is(th, td)::before {
+    content: none;
+  }
+
+  .bm-app .wm-workspace .wm-r-plan-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bm-app .wm-workspace .wm-r-plan-strip > div {
+    display: block;
+  }
+
+  .bm-app .wm-workspace .wm-r-plan-strip span {
+    margin-block-end: var(--space-xs);
+  }
+
+  .bm-app .wm-workspace .wm-v-trial-details ol {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .bm-app .wm-workspace :is(.wm-j-heading, .wm-j-sectionhead, .wm-r-section-line, .wm-v-section-head) {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .bm-app .wm-workspace :is(.wm-j-filters, .wm-j-filter) {
+    width: auto;
+  }
+
+  .bm-app .wm-workspace .wm-r-relax-layout {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+
+  .bm-app .wm-workspace .wm-r-guide {
+    border-block-start: 0;
+    border-inline-start: var(--rule-width) solid var(--color-rule);
+    padding: var(--space-lg) 0 var(--space-lg) var(--space-lg);
+  }
+
+  .bm-app .wm-workspace .wm-v-reaction-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .bm-app .wm-workspace .wm-v-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 70rem) {
+  .bm-app .wm-workspace .wm-j-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-xl);
+  }
+
+  .bm-app .wm-workspace .wm-r-routine-layout {
+    grid-template-columns: minmax(0, .75fr) minmax(0, 1.6fr);
+    gap: var(--space-xl);
+  }
+
+  .bm-app .wm-workspace .wm-r-templates {
+    border-block-end: 0;
+    border-inline-end: var(--rule-width) solid var(--color-rule);
+    padding-block-end: 0;
+    padding-inline-end: var(--space-lg);
+  }
+
+  .bm-app .wm-workspace .wm-r-template-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bm-app .wm-workspace .wm-v-workspace {
+    grid-template-columns: minmax(0, .75fr) minmax(0, 2fr);
+  }
+
+  .bm-app .wm-workspace .wm-v-library {
+    order: 0;
+  }
+}
+
+@media print {
+  .bm-app .wm-workspace :is(.wm-small-navigation, .wm-context-bar, .wm-section-nav) {
+    display: none;
+  }
+}
