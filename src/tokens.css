@@ -1,0 +1,23 @@
+/* Existing BreathMap palette; shared by the native account pages and mobile shell. */
+:root {
+  --color-paper: oklch(97.5% .008 180);
+  --color-surface: oklch(99% .003 180);
+  --color-soft: oklch(94% .013 180);
+  --color-ink: oklch(24% .023 190);
+  --color-muted: oklch(46% .018 190);
+  --color-rule: oklch(87% .015 180);
+  --color-accent: oklch(40% .065 190);
+  --color-tint: oklch(92% .033 180);
+  --color-scrim: oklch(20% .02 190 / .35);
+  --font-display: "BreathMap Manrope", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-body: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --space-xs: .5rem;
+  --space-sm: .75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --radius-control: .5625rem;
+  --radius: 1rem;
+  --mobile-nav-height: 4.25rem;
+  --touch-target: 2.75rem;
+}

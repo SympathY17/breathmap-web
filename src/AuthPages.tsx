@@ -53,7 +53,7 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
     finally { setBusy(false); }
   }
   const title = account ? t('Your account', '你的账号') : signup ? t('Create your BreathMap account', '创建 BreathMap 账号') : forgot ? t('Reset your password', '重置密码') : reset ? t('Choose a new password', '设置新密码') : t('Welcome to BreathMap', '欢迎使用 BreathMap');
-  return <main className="auth-shell">
+  return <main className="auth-shell" lang={lang === 'zh' ? 'zh-CN' : 'en'}>
     <div className="auth-top"><a className="auth-brand" href="/"><Activity /> BreathMap</a><button className="text-button" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'English' : '中文'}</button></div>
     <section className="auth-intro"><p className="eyebrow">{t('YOUR BREATHING, IN VIEW', '看见呼吸变化')}</p><h1>{t('See how breathing changes. Understand each record.', '看见呼吸变化，理解每次记录。')}</h1><p>{t('Keep your respiratory recordings, explore their waveforms and review clear explanations alongside your own notes.', '保存呼吸记录，查看波形，并结合自己的笔记理解分析结果。')}</p><svg viewBox="0 0 560 100" role="img" aria-label={t('BreathMap waveform', 'BreathMap 呼吸波形')}><path d="M0 52H32C42 52 43 18 55 18S68 78 82 78S96 28 110 28S124 70 138 70S153 18 168 18S184 82 200 82S216 26 232 26S248 66 264 66S279 20 294 20S312 80 330 80S348 24 366 24S384 70 402 70S420 30 438 30S454 55 470 55H560" fill="none" stroke="currentColor" strokeWidth="2" /></svg></section>
     <section className="auth-card"><h2>{title}</h2><p>{account ? user?.email : t('Sign in to keep your records together.', '登录后集中管理你的记录。')}</p>

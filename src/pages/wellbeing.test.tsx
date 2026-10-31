@@ -87,6 +87,10 @@ beforeEach(()=>{
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
   vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout','setInterval','clearInterval','performance','requestAnimationFrame','cancelAnimationFrame']});
   vi.setSystemTime(fixedNow);
+  // Keep animation frames on the same fake clock on every host. The task still
+  // records performance.now() when the scheduled frame makes the cue visible.
+  vi.spyOn(globalThis,'requestAnimationFrame').mockImplementation(callback => setTimeout(() => callback(performance.now()),16) as unknown as number);
+  vi.spyOn(globalThis,'cancelAnimationFrame').mockImplementation(id => clearTimeout(id));
   vi.spyOn(Math,'random').mockReturnValue(0);
   window.confirm=vi.fn(()=>true);
   (window as any).happyDOM.settings.disableIframePageLoading=false;
@@ -106,6 +110,25 @@ afterEach(async()=>{
 });
 
 describe('rendered wellbeing form persistence',()=>{
+  it('links multiple diary recordings by checkbox and persists removing one after editing',async()=>{
+    const secondRecord='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    memory.tables.recordings.push({id:secondRecord,fields:{title:'Second synthetic recording',owner:memory.email,recordedAt:'2026-10-28T10:00:00Z',trashedAt:null}});
+    await mount('diary');
+    await click(input('Synthetic linked recording'));
+    await click(input('Second synthetic recording'));
+    await submit();
+    expect(written('diary')[0].fields.recordings).toEqual([RECORD,secondRecord]);
+    await reload('diary');await click(button('Edit'));
+    expect((input('Synthetic linked recording') as HTMLInputElement).checked).toBe(true);
+    expect((input('Second synthetic recording') as HTMLInputElement).checked).toBe(true);
+    await click(input('Synthetic linked recording'));await submit();
+    expect(written('diary')[1].fields.recordings).toEqual([secondRecord]);
+    expect(memory.tables.diary).toHaveLength(1);
+    await reload('diary');await click(button('Edit'));
+    expect((input('Synthetic linked recording') as HTMLInputElement).checked).toBe(false);
+    expect((input('Second synthetic recording') as HTMLInputElement).checked).toBe(true);
+  });
+
   it('creates and edits a linked recording plan, then completes, reopens and skips it after reload',async()=>{
     await mount('monitoring');
     await fill(input('Plan title'),'  Afternoon measurement  ');

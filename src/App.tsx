@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/user';
 import { isConfigured } from './lib/supabase';
 import AuthPages from './AuthPages';
 import AnalysisPanel from './AnalysisPanel';
+import MobileNavigation from './components/MobileNavigation';
 import './app.css';
 
 const pages = {
@@ -31,4 +32,4 @@ function Routes() {
   if ((path === '/analysis' || path === '/report') && id) return <AnalysisPanel key={`${user.id}:${id}`} recordingId={id} detailed={path === '/analysis'} />;
   return <Suspense fallback={<main className="app-loading" role="status">Loading your workspace…</main>}><Page /></Suspense>;
 }
-export default function App() { return <AuthProvider><Routes /></AuthProvider>; }
+export default function App() { return <AuthProvider><Routes /><MobileNavigation /></AuthProvider>; }
