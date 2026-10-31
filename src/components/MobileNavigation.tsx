@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { Activity, BookOpen, CalendarDays, ChartNoAxesCombined, ClipboardList, FileHeart, House, List, Moon, Settings2, ShieldCheck, Timer, Trash2, Upload, UserRound, Zap } from 'lucide-react';
+import { Activity, BookOpen, CalendarDays, ChartNoAxesCombined, ClipboardList, FileHeart, House, List, MessagesSquare, Moon, Settings2, ShieldCheck, Timer, Trash2, Upload, UserRound, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { useAuth } from '../lib/user';
 
@@ -49,6 +49,12 @@ export default function MobileNavigation() {
   const active = path === '/' ? 'home' : path === '/learn' ? 'learn'
     : path === '/wellbeing' ? ['diary', 'reaction'].includes(view) ? 'daily' : ['monitoring', 'trends'].includes(view) ? 'recordings' : 'more'
     : ['/recordings', '/upload', '/report', '/analysis', '/trash'].includes(path) ? 'recordings' : 'more';
+  const assistantQuery = new URLSearchParams();
+  const assistantRecord = url.searchParams.get('recordId') || url.searchParams.get('record') || url.searchParams.get('ctxRecord');
+  if (assistantRecord) assistantQuery.set('recordId', assistantRecord);
+  const assistantDate = url.searchParams.get('ctxDate');
+  if (assistantDate) assistantQuery.set('ctxDate', assistantDate);
+  const assistantHref = '/assistant' + (assistantQuery.size ? '?' + assistantQuery : '');
   function navigateTool(event: MouseEvent<HTMLAnchorElement>, next: string) {
     setOpen(false);
     if (path === '/wellbeing' && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
@@ -58,7 +64,7 @@ export default function MobileNavigation() {
   }
   function navigatePage(event: MouseEvent<HTMLAnchorElement>, href: string) {
     setOpen(false);
-    const page = ({ '/': 'home', '/recordings': 'recordings', '/upload': 'upload', '/learn': 'learn' } as Record<string, string>)[href];
+    const page = ({ '/': 'home', '/recordings': 'recordings', '/upload': 'upload', '/learn': 'learn', '/assistant': 'assistant' } as Record<string, string>)[new URL(href, window.location.origin).pathname];
     if (path === '/wellbeing' && page && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       window.dispatchEvent(new CustomEvent('breathmap:tool-select', { detail: { page } }));
@@ -66,6 +72,7 @@ export default function MobileNavigation() {
   }
   const sections = [
     { title: t('Respiratory recordings', '呼吸记录'), links: [
+      { href: assistantHref, icon: MessagesSquare, label: t('AI assistant', 'AI 助手') },
       { href: '/upload', icon: Upload, label: t('Upload', '上传记录') },
       { href: '/recordings', icon: Activity, label: t('History', '历史记录') },
       { view: 'monitoring', icon: CalendarDays, label: t('Recording plan', '采集计划') },
@@ -100,7 +107,7 @@ export default function MobileNavigation() {
           const next = 'view' in item ? item.view : undefined;
           const href = next ? toolUrl(next) : 'href' in item ? item.href : '/';
           const Icon = item.icon;
-          return <a href={href} key={item.label} onClick={event => next ? navigateTool(event, next) : navigatePage(event, href)} aria-current={href === location ? 'page' : undefined}><Icon aria-hidden="true" /><span>{item.label}</span></a>;
+          return <a href={href} key={item.label} onClick={event => next ? navigateTool(event, next) : navigatePage(event, href)} aria-current={href === location || path === '/assistant' && new URL(href, window.location.origin).pathname === '/assistant' ? 'page' : undefined}><Icon aria-hidden="true" /><span>{item.label}</span></a>;
         })}</div></section>)}
       </DialogContent>
     </Dialog>

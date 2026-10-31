@@ -307,6 +307,7 @@ function useLinks(){
     analysis:useNavigationSetting({name:"analysis-page-link",label:"Detailed analysis",initialValue:{destination:"/analysis",openIn:"SELF"}}),
     trash:useNavigationSetting({name:"trash-page-link",label:"Recycle bin",initialValue:{destination:"/trash",openIn:"SELF"}}),
     recordings:useNavigationSetting({name:"recordings-page-link",label:"Respiratory recordings",initialValue:{destination:"/recordings",openIn:"SELF"}}),
+    assistant:useNavigationSetting({name:"assistant-page-link",label:"AI assistant",initialValue:{destination:"/assistant",openIn:"SELF"}}),
     wellbeing:useNavigationSetting({name:"wellbeing-page-link",label:"Diary, routine and visit pages",initialValue:{destination:"/wellbeing",openIn:"SELF"}}),
     learn:useNavigationSetting({name:"learn-page-link",label:"Sleep guide",initialValue:{destination:"/learn",openIn:"SELF"}}),
     settings:useNavigationSetting({name:"preferences-page-link",label:"Preferences",initialValue:{destination:"/preferences",openIn:"SELF"}}),
@@ -329,9 +330,13 @@ function PrimaryNavigation({t,links}:any){
  const section=PAGE==="wellbeing"?toolSection:["recordings","upload","report","analysis","trash"].includes(PAGE)?"recordings":PAGE;
  const daily=(id:string)=>withQuery(links.wellbeing,{view:id,ctxDate:bmReadJourney().date});
  const recordingsLink=links.recordings;
+ const assistantQuery=new URLSearchParams(window.location.search);
+ const assistantRecord=assistantQuery.get("recordId")||assistantQuery.get("record")||assistantQuery.get("ctxRecord");
+ const assistantLink=withQuery(links.assistant,{ctxDate:bmReadJourney().date,...(assistantRecord?{recordId:assistantRecord}:{})});
  const items=[
   {id:"home",en:"Home",zh:"个人首页",to:links.home,page:"home"},
   {id:"recordings",en:"Recordings",zh:"呼吸记录",to:recordingsLink,page:"recordings"},
+  {id:"assistant",en:"AI assistant",zh:"AI 助手",to:assistantLink,page:"assistant"},
   {id:"daily",en:"Diary & checks",zh:"日记与自测",to:daily("diary"),view:"diary"},
   {id:"routine",en:"Routine & relaxation",zh:"作息与放松",to:daily("routine"),view:"routine"},
   {id:"visits",en:"Visit notes",zh:"就诊资料",to:daily("visits"),view:"visits"},

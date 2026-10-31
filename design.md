@@ -22,3 +22,14 @@ packaging, install prompts, a second backend or new analysis behaviour.
 - Validation: inspect 320, 375, 414, 768, 1024 and 1440 CSS-pixel widths in both
   interface languages. Browser fixtures are synthetic and do not establish real
   device, model-performance or clinical validation.
+
+## AI workspace
+
+The AI assistant is a primary destination alongside recordings. A full workspace
+and a responsive side conversation share the selected recording, result version,
+conversation and draft. The recording and optional time interval are the visual
+anchor; use the existing teal tokens and near-white surfaces without decorative
+metrics. Data analysis calculates; AI explanations interpret those saved results.
+On narrow screens, collapse record switching and data-use detail, keep messages,
+authorization and the composer in a non-overlapping scroll flow, and respect the
+bottom navigation and safe areas. Saved explanations remain readable offline.

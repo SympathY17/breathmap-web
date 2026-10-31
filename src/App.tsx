@@ -4,6 +4,9 @@ import { isConfigured } from './lib/supabase';
 import AuthPages from './AuthPages';
 import AnalysisPanel from './AnalysisPanel';
 import MobileNavigation from './components/MobileNavigation';
+import { AssistantProvider } from './components/AssistantProvider';
+import AssistantSurface from './components/AssistantSurface';
+import AssistantPage from './AssistantPage';
 import './app.css';
 
 const pages = {
@@ -25,6 +28,7 @@ function Routes() {
   if (loading) return <main className="app-loading" role="status">Opening BreathMap…</main>;
   const native = ['/login', '/sign-up', '/forgot-password', '/reset-password', '/account'].includes(path);
   if (native || !user) return <AuthPages path={!user && !native ? '/login' : path} notice={error} />;
+  if (path === '/assistant') return <AssistantPage />;
   const Page = pages[path as keyof typeof pages];
   if (!Page) return <main className="auth-shell"><section className="auth-card"><h1>Page not found</h1><a href="/">Back to your overview</a></section></main>;
   const id = new URLSearchParams(window.location.search).get('recordId') || new URLSearchParams(window.location.search).get('record');
@@ -32,4 +36,4 @@ function Routes() {
   if ((path === '/analysis' || path === '/report') && id) return <AnalysisPanel key={`${user.id}:${id}`} recordingId={id} detailed={path === '/analysis'} />;
   return <Suspense fallback={<main className="app-loading" role="status">Loading your workspace…</main>}><Page /></Suspense>;
 }
-export default function App() { return <AuthProvider><Routes /><MobileNavigation /></AuthProvider>; }
+export default function App() { return <AuthProvider><AssistantProvider><Routes /><MobileNavigation /><AssistantSurface /></AssistantProvider></AuthProvider>; }

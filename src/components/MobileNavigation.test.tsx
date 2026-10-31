@@ -50,4 +50,33 @@ describe('Mobile navigation preserves existing app destinations', () => {
     expect((route.mock.calls[0][0] as CustomEvent).detail).toEqual({ page: 'home' });
     window.removeEventListener('breathmap:tool-select', route);
   });
+  it('exposes the assistant in More with the selected recording and date without changing the bottom destinations', async () => {
+    window.history.replaceState(null, '', '/analysis?recordId=synthetic-record&ctxDate=2026-10-28');
+    await mount();
+    await act(async () => container.querySelector<HTMLButtonElement>('nav > button')!.click());
+    const assistant = document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/assistant"]')!;
+    expect(assistant.textContent).toBe('AI assistant');
+    const destination = new URL(assistant.href);
+    expect(destination.searchParams.get('recordId')).toBe('synthetic-record');
+    expect(destination.searchParams.get('ctxDate')).toBe('2026-10-28');
+    expect([...container.querySelectorAll('nav > a')].map(a => a.textContent)).toEqual(['Home', 'Records', 'Diary', 'Learn']);
+  });
+  it('routes the assistant through the wellbeing leave guard rather than navigating directly', async () => {
+    window.history.replaceState(null, '', '/wellbeing?view=diary&ctxRecord=synthetic-record&ctxDate=2026-10-28');
+    await mount();
+    const route = vi.fn(); window.addEventListener('breathmap:tool-select', route);
+    await act(async () => container.querySelector<HTMLButtonElement>('nav > button')!.click());
+    const assistant = document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/assistant"]')!;
+    expect(new URL(assistant.href).searchParams.get('recordId')).toBe('synthetic-record');
+    await act(async () => assistant.click());
+    expect(route).toHaveBeenCalledOnce();
+    expect((route.mock.calls[0][0] as CustomEvent).detail).toEqual({ page: 'assistant' });
+    window.removeEventListener('breathmap:tool-select', route);
+  });
+  it('marks the assistant as the current More destination', async () => {
+    window.history.replaceState(null, '', '/assistant?recordId=synthetic-record'); await mount();
+    expect(container.querySelector('nav > button')?.getAttribute('data-current')).toBe('true');
+    await act(async () => container.querySelector<HTMLButtonElement>('nav > button')!.click());
+    expect(document.querySelector('[role="dialog"] a[aria-current="page"]')?.textContent).toBe('AI assistant');
+  });
 });

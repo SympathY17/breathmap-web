@@ -110,6 +110,31 @@ afterEach(async()=>{
 });
 
 describe('rendered wellbeing form persistence',()=>{
+  it('guards the assistant destination against unsaved changes and retains the owned recording context',async()=>{
+    await mount('diary',`&ctxRecord=${RECORD}`);
+    await fill(input('Notes'),'Keep this diary draft.');
+    vi.mocked(window.confirm).mockReturnValue(false);
+    await click(button('AI assistant'));
+    expect(window.confirm).toHaveBeenCalledWith('Leave your unsaved changes?');
+    expect(memory.navigate).not.toHaveBeenCalled();
+    expect(input('Notes').value).toBe('Keep this diary draft.');
+    vi.mocked(window.confirm).mockReturnValue(true);
+    await click(button('AI assistant'));
+    expect(memory.navigate).toHaveBeenCalledOnce();
+    const target=new URL(memory.navigate.mock.calls[0][0].destination,window.location.origin);
+    expect(target.pathname).toBe('/assistant');
+    expect(target.searchParams.get('recordId')).toBe(RECORD);
+    expect(target.searchParams.get('ctxDate')).toBe(today);
+    expect(memory.writes).toEqual([]);
+  });
+  it('does not carry an unavailable recording from the URL into the assistant',async()=>{
+    await mount('diary','&ctxRecord=unavailable-record');
+    await click(button('AI assistant'));
+    const target=new URL(memory.navigate.mock.calls[0][0].destination,window.location.origin);
+    expect(target.pathname).toBe('/assistant');
+    expect(target.searchParams.has('recordId')).toBe(false);
+    expect(target.searchParams.get('ctxDate')).toBe(today);
+  });
   it('links multiple diary recordings by checkbox and persists removing one after editing',async()=>{
     const secondRecord='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     memory.tables.recordings.push({id:secondRecord,fields:{title:'Second synthetic recording',owner:memory.email,recordedAt:'2026-10-28T10:00:00Z',trashedAt:null}});

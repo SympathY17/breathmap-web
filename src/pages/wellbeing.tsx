@@ -374,6 +374,7 @@ function useLinks(){
     analysis:useNavigationSetting({name:"analysis-page-link",label:"Detailed analysis",initialValue:{destination:"/analysis",openIn:"SELF"}}),
     trash:useNavigationSetting({name:"trash-page-link",label:"Recycle bin",initialValue:{destination:"/trash",openIn:"SELF"}}),
     recordings:useNavigationSetting({name:"recordings-page-link",label:"Respiratory recordings",initialValue:{destination:"/recordings",openIn:"SELF"}}),
+    assistant:useNavigationSetting({name:"assistant-page-link",label:"AI assistant",initialValue:{destination:"/assistant",openIn:"SELF"}}),
     wellbeing:useNavigationSetting({name:"wellbeing-page-link",label:"Diary, routine and visit pages",initialValue:{destination:"/wellbeing",openIn:"SELF"}}),
     learn:useNavigationSetting({name:"learn-page-link",label:"Sleep guide",initialValue:{destination:"/learn",openIn:"SELF"}}),
     settings:useNavigationSetting({name:"preferences-page-link",label:"Preferences",initialValue:{destination:"/preferences",openIn:"SELF"}}),
@@ -396,9 +397,13 @@ function PrimaryNavigation({t,links}:any){
  const section=PAGE==="wellbeing"?toolSection:["recordings","upload","report","analysis","trash"].includes(PAGE)?"recordings":PAGE;
  const daily=(id:string)=>withQuery(links.wellbeing,{view:id,ctxDate:bmReadJourney().date});
  const recordingsLink=links.recordings;
+ const assistantQuery=new URLSearchParams(window.location.search);
+ const assistantRecord=assistantQuery.get("recordId")||assistantQuery.get("record")||assistantQuery.get("ctxRecord");
+ const assistantLink=withQuery(links.assistant,{ctxDate:bmReadJourney().date,...(assistantRecord?{recordId:assistantRecord}:{})});
  const items=[
   {id:"home",en:"Home",zh:"个人首页",to:links.home,page:"home"},
   {id:"recordings",en:"Recordings",zh:"呼吸记录",to:recordingsLink,page:"recordings"},
+  {id:"assistant",en:"AI assistant",zh:"AI 助手",to:assistantLink,page:"assistant"},
   {id:"daily",en:"Diary & checks",zh:"日记与自测",to:daily("diary"),view:"diary"},
   {id:"routine",en:"Routine & relaxation",zh:"作息与放松",to:daily("routine"),view:"routine"},
   {id:"visits",en:"Visit notes",zh:"就诊资料",to:daily("visits"),view:"visits"},
@@ -1285,12 +1290,12 @@ function WellbeingPage({lang,t,email,profile,recordings,recordingsStatus,recordi
  const goHome=(date?:string)=>{if(writeLocks.current.size){setNotice(t("Wait for the current save to finish.","请等待当前保存完成。"));return;}if(unsaved.current&&!window.confirm(t("Leave your unsaved changes?","离开尚未保存的内容？")))return;unsaved.current=false;navigateWellbeing(withQuery(links.home,{ctxDate:bmValidDay(date)?date!:journey.date}));};
 
  const leavePage=(page:string)=>{
-   if(!["home","recordings","upload","learn"].includes(page)||!links[page])return;
+   if(!["home","recordings","upload","learn","assistant"].includes(page)||!links[page])return;
    if(writeLocks.current.size){setNotice(t("Wait for the current save to finish.","请等待当前保存完成。"));return;}
    if(unsaved.current&&!window.confirm(t("Leave your unsaved changes?","离开尚未保存的内容？")))return;
-   unsaved.current=false;navigateWellbeing(withQuery(links[page],{ctxDate:journey.date}));
+   unsaved.current=false;navigateWellbeing(withQuery(links[page],{ctxDate:journey.date,...(page==="assistant"&&journey.recordingId?{recordId:journey.recordingId}:{})}));
  };
- useEffect(()=>{const request=(event:Event)=>{const target=(event as CustomEvent).detail;if(target?.view&&WELLNESS_TABS.some(item=>item.id===target.view)){if(target.view!==view)choose(target.view,target.context);}else if(target?.page)leavePage(target.page);};window.addEventListener("breathmap:tool-select",request);window.dispatchEvent(new window.Event("breathmap:tool-route-changed"));return()=>window.removeEventListener("breathmap:tool-select",request);},[view,journey.date,email,recordings,lang]);
+ useEffect(()=>{const request=(event:Event)=>{const target=(event as CustomEvent).detail;if(target?.view&&WELLNESS_TABS.some(item=>item.id===target.view)){if(target.view!==view)choose(target.view,target.context);}else if(target?.page)leavePage(target.page);};window.addEventListener("breathmap:tool-select",request);window.dispatchEvent(new window.Event("breathmap:tool-route-changed"));return()=>window.removeEventListener("breathmap:tool-select",request);},[view,journey.date,journey.recordingId,email,recordings,lang]);
 
  const diaryRows=useRecords({from:ds.diary,select:wmDiarySelect,count:50,where:q.text("owner").is(email),orderBy:q.desc("date"),enabled:!!email&&["diary","trends","visits"].includes(view)});
  const diaryCreate=useRecordCreate({from:ds.diary,fields:wmDiaryCreate});
