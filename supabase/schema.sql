@@ -156,7 +156,9 @@ create table public.analysis_results (
 create table public.worker_heartbeat (
   id text primary key default 'main' check (id = 'main'),
   last_seen timestamptz not null default now(),
-  status text not null default 'online' check (status in ('online','offline','busy'))
+  status text not null default 'online' check (status in ('online','offline','busy')),
+  assistant_protocol smallint not null default 0 check (assistant_protocol between 0 and 1),
+  assistant_seen_at timestamptz
 );
 
 create index recordings_user_uploaded_idx on public.recordings(user_id,uploaded_at desc,id);

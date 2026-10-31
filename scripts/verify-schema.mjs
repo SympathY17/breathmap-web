@@ -91,13 +91,21 @@ try {
       await upgrade.exec(bootstrap);
       const directory = new URL('../supabase/migrations/', import.meta.url);
       const migrations = (await readdir(directory)).filter(name => name.endsWith('.sql')).sort();
-      assert.ok(migrations.at(-1).endsWith('_recording_deletion_lifecycle.sql'));
-      for (const name of migrations.slice(0,-1)) await upgrade.exec(await readFile(new URL(name,directory),'utf8'));
+      const deletionIndex = migrations.findIndex(name => name.endsWith('_recording_deletion_lifecycle.sql'));
+      assert.ok(deletionIndex >= 1);
+      assert.ok(migrations.at(-1).endsWith('_assistant_context_capability.sql'));
+      for (const name of migrations.slice(0,deletionIndex)) await upgrade.exec(await readFile(new URL(name,directory),'utf8'));
       await upgrade.query('insert into auth.users(id,email) values($1,$2)', [A,'synthetic-upgrade@example.invalid']);
       await upgrade.query('insert into public.recordings(id,user_id,title,recorded_at,file_path,file_name,file_size,input_sha256) values($1,$2,$3,now(),$4,$5,100,$6)', [RA,A,'Preserved legacy recording',`${A}/${RA}/input.xlsx`,'synthetic.xlsx',INPUT]);
-      await upgrade.exec(await readFile(new URL(migrations.at(-1),directory),'utf8'));
+      await upgrade.query("insert into public.worker_heartbeat(id,last_seen,status) values('main','2026-10-28T13:57:53Z','offline')");
+      for (const name of migrations.slice(deletionIndex)) await upgrade.exec(await readFile(new URL(name,directory),'utf8'));
       const [record] = (await upgrade.query('select title,input_sha256,deletion_started_at from public.recordings where id=$1',[RA])).rows;
       assert.deepEqual(record,{ title:'Preserved legacy recording',input_sha256:INPUT,deletion_started_at:null });
+      const [heartbeat] = (await upgrade.query('select status,assistant_protocol,assistant_seen_at,last_seen from public.worker_heartbeat')).rows;
+      assert.equal(heartbeat.status,'offline');
+      assert.equal(heartbeat.assistant_protocol,0);
+      assert.equal(heartbeat.assistant_seen_at,null);
+      assert.equal(new Date(heartbeat.last_seen).toISOString(),'2026-10-28T13:57:53.000Z');
     } finally { await upgrade.close(); }
   });
 
@@ -316,6 +324,16 @@ try {
       assert.equal(await scalar('select status from public.worker_heartbeat'), 'online');
       await denied(() => db.query("update public.worker_heartbeat set status='offline'"));
     });
+  });
+  await check('assistant capability requires a matching new-worker heartbeat, and a legacy update invalidates it', async () => {
+    await role('service_role', null, () => db.query("update public.worker_heartbeat set assistant_protocol=1,assistant_seen_at='2026-10-31T10:00:00Z',last_seen='2026-10-31T10:00:00Z' where id='main'"));
+    await role('authenticated', A, async () => {
+      assert.equal(await scalar('select assistant_protocol=1 and assistant_seen_at=last_seen from public.worker_heartbeat'),true);
+      await denied(() => db.query('update public.worker_heartbeat set assistant_protocol=1,assistant_seen_at=now()'));
+    });
+    await role('service_role', null, () => db.query("update public.worker_heartbeat set last_seen='2026-10-31T10:00:05Z',status='online' where id='main'"));
+    assert.equal(await scalar('select assistant_protocol=1 and assistant_seen_at=last_seen from public.worker_heartbeat'),false);
+    await role('service_role', null, () => denied(() => db.query('update public.worker_heartbeat set assistant_protocol=2')));
   });
   await enqueue(B, RB, 'analyse', {}, 'changed-input');
   const changedInput = (await claim())[0];

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowLeft, ArrowRight, RefreshCw } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, MessageCircle, RefreshCw } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { formatNumber as num, requestJob, resultIsCurrent, waveSegments, type Waveform } from './lib/analysis';
 import { useAuth } from './lib/user';
 import { PrivateFileLink } from './components/private-file-link';
+import { useAssistant } from './components/AssistantProvider';
+import { assistantTargetFromUrl, validSelection, type AssistantSelection } from './lib/assistant-context';
 import './analysis-responsive.css';
 
 const LABELS: Record<string, [string, string]> = { normal: ['Normal breathing', '正常呼吸'], cont: ['Normal breathing', '正常呼吸'], continuous: ['Normal breathing', '正常呼吸'], no_inhale: ['Inspiratory interruption', '吸气中断'], no_exhale: ['Expiratory interruption', '呼气中断'], pause: ['No breathing', '无呼吸'], invalid: ['Unavailable', '不可用'], unknown: ['Uncertain', '不确定'], '正常呼吸': ['Normal breathing', '正常呼吸'], '呼吸暂停': ['No breathing', '无呼吸'], '呼吸障碍（未吸气）': ['Inspiratory interruption', '吸气中断'], '呼吸障碍（未呼气）': ['Expiratory interruption', '呼气中断'], '无法判断': ['Uncertain', '不确定'] };
@@ -43,16 +45,9 @@ function WavePlot({ wave, column, title, unit }: { wave: Waveform; column: strin
     <text x="4" y="28" fontSize="11" fill="#5e7b70">{num(max)}</text><text x="4" y="137" fontSize="11" fill="#5e7b70">{num(min)}</text><text x={left} y="158" fontSize="11" fill="#5e7b70">{num(a)} s</text><text x={right} y="158" fontSize="11" textAnchor="end" fill="#5e7b70">{num(b)} s</text>
   </svg></div>;
 }
-function Claims({ answer, onEvidence }: { answer: any; onEvidence: (id: string, evidence?: any) => void }) {
-  const claims = answer?.claims;
-  if (!Array.isArray(claims)) return <p>{typeof answer === 'string' ? answer : '—'}</p>;
-  return <>{claims.map((claim: any, index: number) => <div className="message-item" key={index}><p>{claim.text}</p>
-    {Array.isArray(claim.values) && claim.values.length > 0 && <p className="result-note">{claim.values.map((value: any) => `${value.field}: ${typeof value.value === 'object' ? JSON.stringify(value.value) : String(value.value)}`).join(' · ')}</p>}
-    <div className="result-actions">{(claim.evidence_ids ?? []).map((id: string) => <button key={id} onClick={() => onEvidence(id, answer.evidence)}>{id}</button>)}</div>
-  </div>)}</>;
-}
 export default function AnalysisPanel({ recordingId, detailed }: { recordingId: string; detailed: boolean }) {
   const { user } = useAuth();
+  const assistant = useAssistant();
   const [lang, setLang] = useState(() => localStorage.getItem('breathmap-language') === 'en' ? 'en' : 'zh');
   const t = (en: string, zh: string) => lang === 'zh' ? zh : en;
   const reasonText = (code: string) => ({
@@ -63,7 +58,7 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   } as Record<string, string>)[code] ?? t('Some outputs need further review.', '部分结果需要进一步复核。');
   const [record, setRecord] = useState<any>(null), [result, setResult] = useState<any>(null), [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  const [heartbeat, setHeartbeat] = useState<string | null>(null), [consent, setConsent] = useState(false), [question, setQuestion] = useState('');
+  const [heartbeat, setHeartbeat] = useState<string | null>(null);
   const [wave, setWave] = useState<Waveform | null>(null), [start, setStart] = useState('0'), [end, setEnd] = useState('30');
   const [kind, setKind] = useState<'model' | 'statistics' | 'attention'>('model'), [page, setPage] = useState(0), [selected, setSelected] = useState('');
   const [note, setNote] = useState(''), [saved, setSaved] = useState('');
@@ -72,8 +67,8 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   const [detailsError, setDetailsError] = useState(''), [detailsSaved, setDetailsSaved] = useState('');
   const detailsLock = useRef(false), detailsWriteVersion = useRef(0);
   const detailsDateOrigin = useRef({ stored: '', input: '' });
-  const [evidenceView, setEvidenceView] = useState<{ id: string; values: any } | null>(null);
   const overviewHash = useRef(''), appliedWaveJob = useRef('');
+  const focusedRange = useRef<AssistantSelection | null>(null), urlFocus = useRef('');
   const alive = useRef(true), previousResult = useRef<string | null>(null);
   const refresh = useCallback(async () => {
     if (!supabase || !user) return;
@@ -89,11 +84,11 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     if (issue) { setError(t('Your record could not be refreshed. Please try again.', '暂时无法刷新记录，请重试。')); setLoading(false); return; }
     if (metadataVersion === detailsWriteVersion.current) setRecord(r.data);
     setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
-    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setConsent(false); setWave(null); setEvidenceView(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; }
+    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; focusedRange.current = null; urlFocus.current = ''; }
     previousResult.current = a.data?.result_sha256 ?? null;
   }, [recordingId, user?.id, lang]);
   useEffect(() => { alive.current = true; void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => { alive.current = false; clearInterval(timer); }; }, [refresh]);
-  useEffect(() => { setConsent(false); setWave(null); setEvidenceView(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; }, [recordingId]);
+  useEffect(() => { setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; focusedRange.current = null; urlFocus.current = ''; }, [recordingId]);
   useEffect(() => { if (record) setNote(record.notes ?? ''); }, [record?.id, record?.notes]);
   useEffect(() => { localStorage.setItem('breathmap-language', lang); }, [lang]);
   const hash = result?.result_sha256;
@@ -109,12 +104,12 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     return () => { cancelled = true; };
   }, [hash, recordingId, user?.id, result?.wave_manifest?.overview?.path]);
   useEffect(() => {
-    const job = jobs.find(j => j.operation === 'waveform' && j.status === 'completed' && j.result?.waveform && j.result.result_sha256 === hash && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash);
+    const job = jobs.find(j => j.operation === 'waveform' && j.status === 'completed' && j.result?.waveform && j.result.result_sha256 === hash && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash && (!focusedRange.current || j.payload?.start === focusedRange.current.start_s && j.payload?.end === focusedRange.current.end_s));
     if (job && appliedWaveJob.current !== job.id) { appliedWaveJob.current = job.id; setWave(job.result.waveform); }
   }, [jobs, hash]);
   async function submit(operation: 'analyse' | 'report' | 'chat' | 'waveform', payload: Record<string, unknown> = {}) {
     if (busy) return; setBusy(true); setError(''); setSaved('');
-    try { await requestJob(recordingId, operation, { ...payload, language: lang, ...(hash ? { result_sha256: hash } : {}), ...(['report', 'chat'].includes(operation) ? { ai_consent: consent } : {}) }); if (operation === 'chat') setQuestion(''); await refresh(); }
+    try { await requestJob(recordingId, operation, { ...payload, language: lang, ...(hash ? { result_sha256: hash } : {}) }); await refresh(); }
     catch (issue) { setError(issue instanceof Error ? issue.message : t('The request could not be saved.', '请求未能保存。')); }
     finally { setBusy(false); }
   }
@@ -168,21 +163,45 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
       if (alive.current) setDetailsError(t('Your changes could not be saved. Check that the recording is still available, then try again.', '修改未能保存，请确认记录仍然存在后重试。'));
     } finally { detailsLock.current = false; if (alive.current) setSavingDetails(false); }
   }
-  function focusRow(row: any) { setSelected(row.window_id); setStart(String(row.start_s)); setEnd(String(row.end_s)); document.getElementById('waveforms')?.scrollIntoView({ behavior: 'smooth' }); }
-  function focusEvidence(id: string, evidence?: any) {
-    if (id === 'SUM') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const [prefix, rawWindowId] = id.split(':'); const windowId = prefix === 'SEG' && rawWindowId?.startsWith('MW-') ? rawWindowId.slice(3) : rawWindowId; const nextKind = prefix === 'STAT' ? 'statistics' : 'model';
-    const collection = result?.windows?.[nextKind]?.items ?? []; const index = collection.findIndex((r: any) => r.window_id === windowId);
-    if (index >= 0) { setKind(nextKind); setPage(Math.floor(index / 20)); focusRow(collection[index]); return; }
-    const item = Array.isArray(evidence) ? evidence.find((value: any) => value.id === id) : evidence?.[id];
-    if (item?.values) { setEvidenceView({ id, values: item.values }); if (typeof item.values.start_s === 'number' && typeof item.values.end_s === 'number') { setStart(String(item.values.start_s)); setEnd(String(item.values.end_s)); document.getElementById('waveforms')?.scrollIntoView({ behavior: 'smooth' }); } }
+  function focusInterval(next: AssistantSelection, load = true) {
+    const selection = validSelection(next, display?.extent?.duration_s);
+    if (!selection || !hash) return;
+    if (selection.window_id && selection.kind) {
+      const collection = result?.windows?.[selection.kind];
+      if (!resultIsCurrent(collection, hash)) return;
+      const index = collection.items?.findIndex((row: any) => row.window_id === selection.window_id && row.start_s === selection.start_s && row.end_s === selection.end_s) ?? -1;
+      if (index < 0) return;
+      setKind(selection.kind); setPage(Math.floor(index / 20)); setSelected(selection.window_id);
+    } else setSelected('');
+    focusedRange.current = selection; setStart(String(selection.start_s)); setEnd(String(selection.end_s));
+    document.getElementById('waveforms')?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    if (load) void submit('waveform', { start: selection.start_s, end: selection.end_s, max_points: 5000 });
   }
+  function focusRow(row: any) { focusInterval({ start_s: row.start_s, end_s: row.end_s, window_id: row.window_id, kind }); }
+  useEffect(() => {
+    const next = assistantTargetFromUrl();
+    if (!next?.selection || next.recordingId !== recordingId || !hash || !usable) return;
+    if (next.resultHash && next.resultHash !== hash) { setError(t('This reference belongs to an earlier analysis. Review the current results before selecting an interval.', '这条引用对应此前的分析版本，请根据当前结果重新选择区间。')); return; }
+    const key = `${recordingId}:${hash}:${JSON.stringify(next.selection)}`;
+    if (urlFocus.current !== key) { urlFocus.current = key; focusInterval(next.selection); }
+  }, [recordingId, hash, usable]);
+  useEffect(() => {
+    const focus = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.recordingId === recordingId && detail.resultHash === hash) focusInterval(detail.selection);
+    };
+    window.addEventListener('breathmap:focus-evidence', focus);
+    return () => window.removeEventListener('breathmap:focus-evidence', focus);
+  }, [recordingId, hash, busy, lang]);
+  const askAssistant = (range?: AssistantSelection) => assistant.show({ recordingId, resultHash: hash, ...(range ? { selection: range } : {}) });
   if (loading) return <main className="app-loading" role="status">{t('Loading your record…', '正在读取记录…')}</main>;
   if (!record) return <main className="auth-shell"><section className="auth-card"><h1>{t('Record not found', '未找到记录')}</h1><p>{error || t('This record is unavailable in your account.', '当前账号无法访问这条记录。')}</p><a href="/recordings">{t('Saved recordings', '历史记录')}</a></section></main>;
   return <main className="result-shell" lang={lang === 'zh' ? 'zh-CN' : 'en'}>
     <header className="result-top"><a className="auth-brand" href="/"><Activity />BreathMap</a><nav className="result-links" aria-label={t('Recording navigation', '记录导航')}><a href="/recordings"><ArrowLeft size={15} /> {t('Saved recordings', '历史记录')}</a><a href={`/wellbeing?view=diary&ctxRecord=${recordingId}`}>{t('Linked diary', '关联日记')}</a><a href="/account">{t('Account', '账号')}</a><button className="text-button" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'English' : '中文'}</button></nav></header>
+    <nav className="result-assistant-tabs" aria-label={t('Recording workspace', '记录工作区')}><a href={`/analysis?recordId=${recordingId}`} aria-current={detailed ? 'page' : undefined}>{t('Data analysis', '数据分析')}</a><button type="button" onClick={() => askAssistant()}><MessageCircle size={17} />{t('AI explanation & chat', 'AI 解读与对话')}</button></nav>
     <p className="eyebrow">{detailed ? t('DETAILED ANALYSIS', '详细分析') : t('RECORDING REPORT', '记录报告')}</p><h1>{record.title}</h1>
     <p className="result-subtitle">{new Date(record.recorded_at ?? record.uploaded_at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-GB')} · {t('Duration', '时长')} {num(display?.extent?.duration_s)} s</p>
+    <section className="result-ai-entry"><div><MessageCircle size={22} /><div><h2>{t('Understand this recording with AI', '与 AI 一起读懂这次记录')}</h2><p>{report?.status === 'ready' ? t('Your saved explanation is available. Open it or ask about a specific interval.', '已有解读可供阅读，也可以针对具体片段继续提问。') : t('Review an explanation, ask about a metric, and follow each reference back to the waveform.', '阅读结果解读，询问指标变化，通过引用查看对应波形。')}</p></div></div><button type="button" className="assistant-primary" onClick={() => askAssistant()}>{t('Open AI assistant', '打开 AI 助手')}<ArrowRight size={17} /></button></section>
     {error && <p role="alert" className="result-status error">{error}</p>}
     {pending.length > 0 && <div className="result-status" role="status">{pending.some(j => j.status === 'running') ? t('Your request is being processed.', '正在处理你的请求。') : online ? t('Your request is queued for the analysis host.', '请求已排队，等待分析主机处理。') : t('Your request has been saved. It will continue when the analysis host is available.', '请求已保存，将在分析主机可用后继续。')} {t('Saved results remain available.', '已有结果仍可查看。')}</div>}
     {execution === 'partial' && <div className="result-status warn">{t('Analysis is available with some metrics limited. Missing values remain unavailable; this does not mean zero.', '分析结果可用，部分指标受限。缺失值保留为不可用，不等于零。')}<p className="result-note">{[...new Set((display.execution.partial_reasons ?? []).map(reasonText))].join(' ')}</p></div>}
@@ -198,8 +217,8 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     {usable && <>
       {!detailed && <div className="result-actions"><a className="solid-button" href={`/analysis?recordId=${recordingId}`}>{t('View detailed analysis', '查看详细分析')} <ArrowRight size={15} /></a></div>}
       <section className="result-card" id="waveforms"><h2>{t('Synchronized waveforms', '同步波形')}</h2><p className="result-note">{t('Select an interval to inspect the saved signals. Changing the view does not recalculate your metrics.', '选择区间查看已保存信号。切换视图不会重新计算指标。')}</p>
-        <form className="wave-controls" onSubmit={event => { event.preventDefault(); const a = Number(start), b = Number(end); if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > (display?.extent?.analysis_end_s ?? display?.extent?.duration_s ?? 43200)) { setError(t('Choose a valid interval within this recording.', '请选择记录范围内的有效区间。')); return; } void submit('waveform', { start: a, end: b, max_points: 5000 }); }}>
-          <label>{t('Start (seconds)', '起点（秒）')}<input required type="number" min="0" step="0.01" value={start} onChange={e => setStart(e.target.value)} /></label><label>{t('End (seconds)', '终点（秒）')}<input required type="number" min="0" step="0.01" value={end} onChange={e => setEnd(e.target.value)} /></label><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'waveform')}>{t('Load interval', '载入区间')}</button>
+        <form className="wave-controls" onSubmit={event => { event.preventDefault(); const a = Number(start), b = Number(end); if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > (display?.extent?.analysis_end_s ?? display?.extent?.duration_s ?? 43200)) { setError(t('Choose a valid interval within this recording.', '请选择记录范围内的有效区间。')); return; } focusedRange.current = { start_s: a, end_s: b }; void submit('waveform', { start: a, end: b, max_points: 5000 }); }}>
+          <label>{t('Start (seconds)', '起点（秒）')}<input required type="number" min="0" step="0.01" value={start} onChange={e => setStart(e.target.value)} /></label><label>{t('End (seconds)', '终点（秒）')}<input required type="number" min="0" step="0.01" value={end} onChange={e => setEnd(e.target.value)} /></label><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'waveform')}>{t('Load interval', '载入区间')}</button><button type="button" className="assistant-secondary" disabled={!validSelection({ start_s: Number(start), end_s: Number(end) }, display?.extent?.duration_s)} onClick={() => askAssistant({ start_s: Number(start), end_s: Number(end) })}><MessageCircle size={16} />{t('Ask about this interval', '询问这段波形')}</button>
         </form>
         {wave ? <div style={{ marginTop: 24 }}><WavePlot wave={wave} column="signal_mT" title={t('Magnetic signal', '磁场信号')} unit="mT" /><WavePlot wave={wave} column="expiratory_flow_l_min" title={t('Estimated expiratory flow', '估计呼气流量')} unit="L/min" /><WavePlot wave={wave} column="sig_input_uV" title={t('SIG differential voltage', 'SIG 差分电压')} unit="μV" /><p className="wave-caption">{t('Actual sampled source rows; gaps and invalid points are not joined or interpolated.', '显示实际抽取的源数据点；缺口和无效点不连线、不插值。')} {wave.sampling && `${num(wave.sampling.returned_points, 0)} / ${num(wave.sampling.source_rows_in_range, 0)} ${t('source rows', '源数据行')}`}</p></div> : <p className="result-note">{t('The saved waveform is loading, or select an interval to request it from the analysis host.', '正在读取已保存波形，也可选择区间向分析主机请求。')}</p>}
       </section>
@@ -208,15 +227,7 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
         {rows.length === 0 && <p>{t('No saved windows in this collection.', '此分类暂无已保存窗口。')}</p>}
         <div className="result-actions result-pagination"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t('Previous', '上一页')}</button><span aria-live="polite">{page + 1} / {Math.max(1, Math.ceil(rows.length / 20))} · {rows.length} {t('windows', '个窗口')}</span><button disabled={(page + 1) * 20 >= rows.length} onClick={() => setPage(p => p + 1)}>{t('Next', '下一页')}</button></div><p className="result-note">{t('Model scores are not accuracy or disease probability. Window boundaries do not identify exact event boundaries.', '模型分数不代表准确率或患病概率，窗口边界不代表精确事件边界。')}</p>
       </section>}
-      <section className="result-card"><h2>{t('Your recording explained', '本次记录解读')}</h2>
-        {report?.status === 'ready' ? <><span className="source-tag">{report.source === 'offline_stub' || report.source === 'simulated' ? t('Simulated AI output', '模拟 AI 输出') : report.source === 'deepseek' || report.source === 'live' ? 'DeepSeek' : t('Saved explanation — check source', '已保存解读 · 请核对来源')}</span><Claims answer={report} onEvidence={focusEvidence} /></> : <p>{t('A saved explanation is not available yet. Your numerical results remain accessible.', '尚无可用解读，已有数值结果仍可查看。')}</p>}
-        <label className="result-consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>{t('Allow the analysis host to send this recording’s structured analysis and my question to DeepSeek for explanation. Raw files, diary entries and account passwords are not sent.', '允许分析主机将本条记录的结构化分析与我的问题发送给 DeepSeek，以生成解读。不发送原始文件、日记或账号密码。')}</span></label>
-        <div className="result-actions"><button disabled={busy || !consent || pending.some(j => j.operation === 'report')} onClick={() => void submit('report')}>{report?.status === 'ready' ? t('Review saved explanation', '查看已存解读') : t('Generate or retry explanation', '生成或重试解读')}</button></div>
-        <h3>{t('Ask about this recording', '询问本次记录')}</h3><form onSubmit={event => { event.preventDefault(); if (question.trim()) void submit('chat', { question: question.trim() }); }}><textarea aria-label={t('Your question', '你的问题')} rows={3} maxLength={2000} placeholder={t('What does this highlighted window mean?', '这个窗口的结果代表什么？')} value={question} onChange={e => setQuestion(e.target.value)} /><div className="result-actions"><button className="solid-button" disabled={busy || !consent || !question.trim() || pending.some(j => j.operation === 'chat')}>{t('Send question', '发送问题')}</button></div></form>
-        {jobs.filter(j => j.operation === 'chat' && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash && (j.status !== 'completed' || j.result?.result_sha256 === hash)).slice().reverse().map(job => <div className="message-item" key={job.id}><strong>{t('You', '我')}</strong><p>{job.payload?.question}</p><strong>{t('Recording assistant', '记录助手')}</strong>{job.status === 'completed' ? <Claims answer={job.result?.answer} onEvidence={focusEvidence} /> : <p>{job.status === 'queued' ? t('Waiting for the analysis host…', '等待分析主机…') : job.status === 'running' ? t('Preparing an answer…', '正在生成回答…') : t('No answer was saved. You can try again.', '未能保存回答，可以重试。')}</p>}</div>)}
-      </section>
     </>}
-    {evidenceView && <section className="result-card" aria-live="polite"><h2>{t('Supporting evidence', '支持证据')} · {evidenceView.id}</h2><dl>{Object.entries(evidenceView.values).map(([field, value]) => <div className="message-item" key={field}><dt>{field}</dt><dd>{value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section>}
     <section className="result-card"><h2>{t('Recording information', '记录信息')}</h2>
       {editingDetails ? <form onSubmit={event => void saveDetails(event)} aria-busy={savingDetails}>
         <fieldset disabled={savingDetails} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

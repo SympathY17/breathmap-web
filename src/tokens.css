@@ -9,6 +9,8 @@
   --color-accent: oklch(40% .065 190);
   --color-tint: oklch(92% .033 180);
   --color-scrim: oklch(20% .02 190 / .35);
+  --color-error: oklch(43% .11 28);
+  --color-error-surface: oklch(97% .014 28);
   --font-display: "BreathMap Manrope", "Segoe UI", "Microsoft YaHei", sans-serif;
   --font-body: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   --space-xs: .5rem;

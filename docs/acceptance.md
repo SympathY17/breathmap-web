@@ -106,3 +106,18 @@ It adds no native app package, PWA installation, database migration, worker chan
 - Interactive checks included menu focus, resize/rotation layout changes, cancelled navigation with an unsaved diary, retained recording context, recycle confirmation cancellation, window pagination/selection and AI consent restrictions. All fixture runs blocked external requests and business mutations. No existing account, retained recording or analysis-host state was changed.
 
 Evidence is retained locally in `.tmp/responsive-qa/final-summary.json` and the corresponding scripts, measurements and PNGs. These use synthetic data and substituted Auth/Storage boundaries; they do not establish hosted authentication, new model performance, real-user testing or physical-device acceptance. Actual phone/tablet touch, keyboards and file pickers still require device checks. Deployment status is recorded separately after publishing.
+
+## 2026-10-31 AI assistant workspace
+
+The AI assistant now has a primary destination, recording-level entry and shared
+floating panel. Recording/version/interval context, session drafts, request locks,
+consent and response receipts are checked. Saved report reads do not request a new
+report. Window/citation selections now request the corresponding waveform directly.
+
+Frontend: **116 passed**, production build passed. Worker: **89 passed**;
+temporary PostgreSQL: **44 passed**. Local browser checks comprise a **128-check**
+initial matrix and a separate **116-check** follow-up after fixing short-screen
+message/composer overlap. No real AI request, original-host startup, participant
+upload or real-device test was performed. See
+[the release record](ai-assistant-20261031.md) and
+[the backend contract](assistant-context.md) for deployment and evidence limits.

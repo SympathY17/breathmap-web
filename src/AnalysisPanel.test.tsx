@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocked = vi.hoisted(() => ({
   from: vi.fn(), download: vi.fn(), requestJob: vi.fn(),
+  showAssistant: vi.fn(),
   user: { id: '11111111-1111-4111-8111-111111111111', email: 'panel-test@example.invalid', fullName: 'Panel test' },
   record: null as any, result: null as any, jobs: [] as any[], heartbeat: [] as any[], overviews: {} as Record<string, any>,
 }));
@@ -12,6 +13,7 @@ vi.mock('./lib/supabase', () => ({
   supabase: { from: mocked.from, storage: { from: () => ({ download: mocked.download }) } },
 }));
 vi.mock('./lib/user', () => ({ useAuth: () => ({ user: mocked.user }), useCurrentUser: () => mocked.user }));
+vi.mock('./components/AssistantProvider', () => ({ useAssistant: () => ({ show: mocked.showAssistant }) }));
 vi.mock('./lib/analysis', async importOriginal => ({
   ...await importOriginal<typeof import('./lib/analysis')>(), requestJob: mocked.requestJob,
 }));
@@ -64,25 +66,23 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => { root.unmount(); }); container.remove(); vi.useRealTimers(); (globalThis as any).IS_REACT_ACT_ENVIRONMENT = false; });
 
 describe('AnalysisPanel saved-result version boundaries', () => {
-  it('replaces an interval waveform and clears old evidence when a new result SHA arrives', async () => {
+  it('loads a selected window immediately and clears the old interval when a new result SHA arrives', async () => {
     mocked.result.display.report = { status: 'ready', source: 'simulated', claims: [{ text: 'Old synthetic explanation', evidence_ids: ['QA-OLD'], values: [] }], evidence: { 'QA-OLD': { values: { proof: 'OLD-SOURCE-ONLY' } } } };
     await mount();
     expect(plots()).toContain('Magnetic signal, 0–60 s');
-    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
     mocked.requestJob.mockImplementation(async (_id, operation, payload) => {
       expect(operation).toBe('waveform');
       expect(payload).toMatchObject({ start: 10, end: 15, result_sha256: hashA });
-      mocked.jobs = [{ id: 'interval-a', operation: 'waveform', status: 'completed', payload: { _result_sha256: hashA }, result: { result_sha256: hashA, waveform: waveform(10, 15) } }];
+      mocked.jobs = [{ id: 'interval-a', operation: 'waveform', status: 'completed', payload: { _result_sha256: hashA, start: payload.start, end: payload.end }, result: { result_sha256: hashA, waveform: waveform(10, 15) } }];
       return { id: 'interval-a' };
     });
-    await act(async () => { container.querySelector('form.wave-controls')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
     expect(plots()).toContain('Magnetic signal, 10–15 s');
-    await click(button('QA-OLD'));
-    expect(container.textContent).toContain('OLD-SOURCE-ONLY');
+    expect(mocked.requestJob).toHaveBeenCalledTimes(1);
+    await click(button('Ask about this interval'));
+    expect(mocked.showAssistant).toHaveBeenCalledWith({ recordingId: recordId, resultHash: hashA, selection: { start_s: 10, end_s: 15 } });
     await click(button('Next'));
     expect(container.querySelector('tbody')?.textContent).toContain('OLD-21');
-    await click(container.querySelector('input[type="checkbox"]')!);
-    expect((container.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(true);
 
     mocked.result = resultFixture(hashB, 25, 90, 'NEW');
     // Retaining the old completed job in history must not block a new overview.
@@ -92,7 +92,6 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     expect(container.textContent).not.toContain('OLD-SOURCE-ONLY');
     expect(container.querySelector('tbody')?.textContent).toContain('NEW-01');
     expect(container.querySelector('tbody')?.textContent).not.toContain('NEW-21');
-    expect((container.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(false);
     expect(mocked.download).toHaveBeenCalledWith(`${mocked.user.id}/${recordId}/${hashB}/overview.json`);
   });
   it('shows every saved window across pages without recalculating or requesting AI', async () => {
@@ -116,10 +115,19 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     await mount();
     expect([...container.querySelectorAll('.result-metric strong')].map(element => element.textContent)).toEqual(['17', '8.1', '25 / 25']);
     expect(container.textContent).toContain('Your request has been saved. It will continue when the analysis host is available.');
-    expect(container.textContent).toContain('Your numerical results remain accessible.');
+    expect(container.textContent).toContain('Saved numerical results are retained.');
     expect(container.querySelectorAll('tbody tr')).toHaveLength(20);
     expect(plots()).toContain('Magnetic signal, 0–60 s');
-    expect(button('Generate or retry explanation').disabled).toBe(true);
+    expect(button('Open AI assistant')).toBeTruthy();
     expect(mocked.requestJob).not.toHaveBeenCalled();
+  });
+  it('loads a current AI citation and rejects another recording or result version', async () => {
+    await mount();
+    const dispatch = (id: string, hash: string) => window.dispatchEvent(new CustomEvent('breathmap:focus-evidence', { detail: { recordingId: id, resultHash: hash, selection: { start_s: 10, end_s: 15, window_id: 'OLD-06', kind: 'model' } } }));
+    await act(async () => { dispatch('33333333-3333-4333-8333-333333333333', hashA); dispatch(recordId, hashB); });
+    expect(mocked.requestJob).not.toHaveBeenCalled();
+    await act(async () => { dispatch(recordId, hashA); });
+    expect(mocked.requestJob).toHaveBeenCalledWith(recordId, 'waveform', expect.objectContaining({ start: 10, end: 15, result_sha256: hashA }));
+    expect(container.querySelector('tr[aria-selected="true"]')?.textContent).toContain('OLD-06');
   });
 });
