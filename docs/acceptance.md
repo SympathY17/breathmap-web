@@ -163,3 +163,21 @@ Raw, sanitized evidence is retained under `.tmp/analysis-restore-20261104/`,
 including `live-57b5bb99-269a-459f-bcb3-daf944cfc5d7.json` and separate handoff
 outcomes. This directory is ignored by Git. All new synthetic resources are
 retained for manual acceptance; the existing manual-retention decisions stand.
+
+PR #6 merged as `f335d82c7418e3131100378a58a1e9bc9e2d01cb`;
+production deploy `6aeadbfaf86786a5bfbb6b20` became ready at
+2026-11-04 15:17:45 CST. All 17 deployed JS/CSS files matched the tested build
+and contained no server secret. Production browser reload now restored the saved
+50–60-second waveform and inputs together. Editing to 12–22 seconds survived a
+refresh; Load interval returned that actual waveform, and Ask about this interval
+passed the same range to a third real contextual question. The answer completed
+with both previous job IDs in its server receipt. Saved notes and the 12–22-second
+range remained after reload. The retained recording now has one completed numeric
+job, three waveform jobs, one report and three questions, with no failed/pending
+jobs. The complete run used eight successful provider completions; browsing saved
+explanations did not generate additional requests.
+
+Browser observations and screenshot: `browser-results.json` and
+`production-restored-record.png` in the same ignored evidence directory. The
+worker remains running on the original configured computer at the user's request.
+Startup is still manual after shutdown/restart; see [worker instructions](../worker/README.md).
