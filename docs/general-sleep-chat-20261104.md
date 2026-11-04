@@ -50,13 +50,18 @@ and Chinese at 320/375/414/768/1024/1440px, and a 375x400 short-screen composer.
 No page-wide horizontal overflow was found. Evidence is local and ignored by Git
 under `.tmp/general-assistant-20261104/`; it is not real-device or live AI proof.
 
-Production secrets are not configured yet. Netlify Free rejects functions-only
-variable scopes. Automatic approval also rejected broadening the secret scopes
-without explicit user authorization. The pending user question covers production
-server variables available to builds/functions/runtime, with secret marking and
-a check that the generated browser files contain no secrets. Do not retry this
-scope expansion or publish an apparently working chat until authorization and
-configuration are complete. No paid upgrade is authorized.
+The user explicitly authorized Netlify Free's builds/functions/runtime scopes
+for the two production-only server variables, `DEEPSEEK_API_KEY` and
+`SUPABASE_SECRET_KEY`. Both are marked secret, have no VITE_ prefix and are absent
+from source/browser output. Production context and scope metadata were verified;
+no paid upgrade or secrets in Deploy Preview contexts are authorized.
 
-The previous production version remains available. SMTP and local worker recovery
-remain deferred. Existing retained QA accounts and recordings must not be deleted.
+Before publication, the same handler running on loopback passed nine real cloud
+checks using synthetic accounts: anonymous and foreign-origin rejection, two real
+DeepSeek turns, saved turns, same-ID replay, cross-account read isolation,
+client-write rejection and foreign-conversation rejection. Two synthetic accounts
+and their evidence were retained. This validates the real API/DB/provider path;
+Netlify production runtime acceptance remains the final release check.
+
+SMTP and local analysis worker recovery remain deferred. Existing retained QA
+accounts and recordings must not be deleted.
