@@ -61,7 +61,19 @@ checks using synthetic accounts: anonymous and foreign-origin rejection, two rea
 DeepSeek turns, saved turns, same-ID replay, cross-account read isolation,
 client-write rejection and foreign-conversation rejection. Two synthetic accounts
 and their evidence were retained. This validates the real API/DB/provider path;
-Netlify production runtime acceptance remains the final release check.
+Netlify production runtime acceptance subsequently passed the same nine checks
+with two further synthetic accounts and two real provider turns. The second reply
+correctly translated the first question from the preceding answer. These two
+batches are recorded separately, not presented as independent real-user trials.
+
+PR #4 was merged as `217a43bcfa2cf9f76d8bf471a59c77f27f480fcc` and production
+deploy `6aeabcf972449ffa5e6b8912` became ready at 2026-11-04 13:05:28 CST.
+The `/assistant` route returned HTTP 200. All 17 deployed JS/CSS files matched the
+tested local build byte-for-byte and contained neither server secret. An initial
+asset request returned HTTP 500; the instrumented follow-up check passed all
+files. Raw production API results and resource hashes remain in the ignored
+local evidence directory. Four new synthetic accounts across the two batches
+were retained; existing records and accounts were untouched.
 
 SMTP and local analysis worker recovery remain deferred. Existing retained QA
 accounts and recordings must not be deleted.
