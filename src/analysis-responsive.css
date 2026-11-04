@@ -212,3 +212,88 @@ main.result-shell {
   .result-shell .result-tab,
   .result-shell .result-table button { min-height: 3rem; }
 }
+
+/* A recording workbench uses the space remaining after the app navigation and
+ * assistant panel. Narrow containers retain the same reading order. */
+main.result-shell {
+  container: analysis / inline-size;
+  color: var(--color-ink);
+}
+.result-shell .result-heading { padding-block: 1.25rem .5rem; }
+.result-shell .result-heading .eyebrow { margin: 0 0 .625rem; color: var(--color-muted); }
+.result-shell .result-heading h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3cqi, 2.4rem);
+  max-width: 32ch;
+}
+.result-shell .result-heading .result-subtitle { margin: .75rem 0 0; }
+.result-shell .result-section-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem 1.25rem;
+  padding-block: .5rem 1rem;
+  border-bottom: 1px solid var(--color-rule);
+  margin-bottom: 1.5rem;
+}
+.result-shell .result-section-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-accent);
+  font-size: .875rem;
+  text-underline-offset: .25em;
+}
+.result-shell .result-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+.result-shell .result-primary,
+.result-shell .result-secondary { min-width: 0; }
+.result-shell .result-primary { display: grid; gap: 1.5rem; }
+.result-shell .result-secondary { display: grid; gap: 1.25rem; }
+.result-shell .result-workspace .result-card { margin-top: 0; }
+.result-shell .result-primary > .result-status { margin-block: 0; }
+.result-shell .result-secondary .result-ai-entry {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 1.25rem;
+  background: var(--color-tint);
+}
+.result-shell .result-secondary .result-ai-entry > div { display: flex; align-items: flex-start; gap: .75rem; min-width: 0; }
+.result-shell .result-secondary .result-ai-entry svg { flex: none; }
+.result-shell .result-secondary .result-ai-entry h2 { font-size: 1.125rem; line-height: 1.5; }
+.result-shell .result-secondary .result-ai-entry p { line-height: 1.7; }
+.result-shell .result-secondary .result-ai-entry button { justify-content: space-between; width: 100%; min-height: 2.75rem; }
+.result-shell .result-secondary .result-card { padding: 1.25rem; }
+.result-shell .result-secondary .result-card h2 { font-size: 1.125rem; }
+.result-shell .result-secondary .result-actions { align-items: flex-start; }
+.result-shell .result-secondary .result-actions > :is(a, button) { white-space: normal; text-align: start; }
+.result-shell .result-information > p { overflow-wrap: anywhere; }
+.result-shell #recording-information,
+.result-shell #recording-notes,
+.result-shell #analysis-windows { scroll-margin-block-start: 1.25rem; }
+.result-shell :is(a, button, input, textarea):focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.result-shell .wave-controls { align-items: end; }
+.result-shell .wave-controls > button { white-space: normal; line-height: 1.5; }
+
+@container analysis (min-width: 60rem) {
+  .result-shell .result-workspace { grid-template-columns: minmax(0, 1fr) minmax(17rem, .42fr); gap: 1.5rem; }
+  .result-shell .result-heading { padding-block: 1.75rem .5rem; }
+}
+
+@container analysis (max-width: 42rem) {
+  .result-shell .result-links { gap: .25rem .75rem; }
+  .result-shell .wave-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .result-shell .wave-controls > button { grid-column: 1 / -1; }
+  .result-shell .result-secondary .result-actions { gap: .625rem; }
+}
+
+@media print {
+  .result-shell .result-workspace { display: block; }
+  .result-shell .result-section-links { display: none; }
+  .result-shell .result-secondary { display: block; }
+  .result-shell .result-secondary .result-card { margin-top: 1rem; }
+}

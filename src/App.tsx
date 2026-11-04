@@ -7,7 +7,9 @@ import MobileNavigation from './components/MobileNavigation';
 import { AssistantProvider } from './components/AssistantProvider';
 import AssistantSurface from './components/AssistantSurface';
 import AssistantPage from './AssistantPage';
+import DesktopNavigation from './components/DesktopNavigation';
 import './app.css';
+import './workspace.css';
 
 const pages = {
   '/': lazy(() => import('./pages/home')),
@@ -36,4 +38,4 @@ function Routes() {
   if ((path === '/analysis' || path === '/report') && id) return <AnalysisPanel key={`${user.id}:${id}`} recordingId={id} detailed={path === '/analysis'} />;
   return <Suspense fallback={<main className="app-loading" role="status">Loading your workspace…</main>}><Page /></Suspense>;
 }
-export default function App() { return <AuthProvider><AssistantProvider><Routes /><MobileNavigation /><AssistantSurface /></AssistantProvider></AuthProvider>; }
+export default function App() { return <AuthProvider><AssistantProvider><div className="workspace-shell"><DesktopNavigation /><div className="workspace-content"><Routes /></div></div><MobileNavigation /><AssistantSurface /></AssistantProvider></AuthProvider>; }

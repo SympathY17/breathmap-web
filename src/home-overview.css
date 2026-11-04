@@ -1,0 +1,131 @@
+/* Home overview uses available content width, including the desktop sidebar
+ * and an open AI panel. Source values and data actions remain page-owned. */
+.bm-app.bm-app .bh-home {
+  container: home-overview / inline-size;
+  max-width: 74rem;
+  margin-inline: auto;
+}
+.bm-app.bm-app .bh-home .bh-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.25rem;
+  margin: 0 0 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+.bm-app.bm-app .bh-home .bh-heading h1 {
+  font-size: clamp(1.65rem, 4cqi, 2.25rem);
+  margin-block: .25rem .5rem;
+}
+.bm-app.bm-app .bh-home .bh-greeting { margin-top: 0; }
+.bm-app.bm-app .bh-home .bh-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  min-width: 0;
+}
+.bm-app.bm-app .bh-home .bh-date-control {
+  width: auto;
+  max-width: 100%;
+  align-items: flex-start;
+  flex: 1 1 15rem;
+}
+.bm-app.bm-app .bh-home .bh-date-control > label {
+  font-size: .8125rem;
+  color: var(--color-muted);
+}
+.bm-app.bm-app .bh-home .bh-date-control > div {
+  width: 100%;
+  max-width: 20rem;
+}
+.bm-app.bm-app .bh-home .bh-date-control input { width: 0; flex: 1; }
+.bm-app.bm-app .bh-home .bh-upload-link { flex: none; }
+.bm-app.bm-app .bh-home .bh-main-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+}
+.bm-app.bm-app .bh-home .bh-daybook,
+.bm-app.bm-app .bh-home .bh-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  min-width: 0;
+}
+.bm-app.bm-app .bh-home .bh-moment,
+.bm-app.bm-app .bh-home .bh-week {
+  min-width: 0;
+  margin: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.bm-app.bm-app .bh-home .bh-moment-heading {
+  align-items: flex-start;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+.bm-app.bm-app .bh-home .bh-moment-heading > div { flex: 1 1 10rem; }
+.bm-app.bm-app .bh-home .bh-moment-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--color-soft);
+  border: 0;
+  border-radius: .75rem;
+}
+.bm-app.bm-app .bh-home .bh-phase {
+  font-size: .6875rem;
+  letter-spacing: .04em;
+  margin-bottom: .25rem;
+}
+.bm-app.bm-app .bh-home .bh-moment h2,
+.bm-app.bm-app .bh-home .bh-aside h2,
+.bm-app.bm-app .bh-home .bh-history h2,
+.bm-app.bm-app .bh-home .bh-reading h2 { font-size: 1.125rem; line-height: 1.45; }
+.bm-app.bm-app .bh-home .bh-entry-state {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 3.25rem;
+  white-space: normal;
+}
+.bm-app.bm-app .bh-home .bh-moment > p { font-size: .9375rem; line-height: 1.7; }
+.bm-app.bm-app .bh-home .bh-personal-summary strong { font-size: 1.875rem; }
+.bm-app.bm-app .bh-home .bh-record-focus h3 { font-size: 1.0625rem; overflow-wrap: anywhere; }
+.bm-app.bm-app .bh-home .bh-week-days { gap: .125rem; margin-block: 1rem; }
+.bm-app.bm-app .bh-home .bh-week-days button { padding: .75rem .125rem; }
+.bm-app.bm-app .bh-home .bh-week-days span { font-size: .75rem; }
+.bm-app.bm-app .bh-home .bh-plan-lines p { flex-wrap: wrap; overflow-wrap: anywhere; }
+.bm-app.bm-app .bh-home .bh-supporting-note {
+  margin: 1rem 0 0;
+  font-size: .8125rem;
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+.bm-app.bm-app .bh-home .bh-history,
+.bm-app.bm-app .bh-home .bh-reading {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-rule);
+}
+.bm-app.bm-app .bh-home .bh-reading-links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.bm-app.bm-app .bh-home .bh-reading-links > a { min-width: 0; }
+.bm-app.bm-app .bh-home .bh-actions { gap: .75rem 1rem; }
+@container home-overview (min-width: 44rem) {
+  .bm-app.bm-app .bh-home .bh-daybook,
+  .bm-app.bm-app .bh-home .bh-aside,
+  .bm-app.bm-app .bh-home .bh-reading-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container home-overview (min-width: 60rem) {
+  .bm-app.bm-app .bh-home .bh-heading { flex-direction: row; align-items: flex-end; }
+  .bm-app.bm-app .bh-home .bh-heading > div:first-child { flex: 1; }
+  .bm-app.bm-app .bh-home .bh-heading-actions { flex: 0 1 26rem; }
+}

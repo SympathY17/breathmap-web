@@ -9,7 +9,8 @@ packaging, install prompts, a second backend or new analysis behaviour.
   a reading layout for sleep knowledge. All views share the same visual identity.
 - Colour and type: keep the existing scoped page tokens; `src/tokens.css` shares
   those values with the account pages and the mobile navigation.
-- Navigation: desktop and tablet retain the full section navigation. Below 48rem,
+- Navigation: wide desktop screens (72rem and above) use a persistent workspace
+  sidebar; tablet and narrower desktop screens retain section navigation. Below 48rem,
   Home, Records, Diary, Learn and More form a bottom navigation bar. More exposes
   every other existing destination. Current recording/date context is retained
   when switching between related wellbeing tools.
@@ -33,3 +34,17 @@ metrics. Data analysis calculates; AI explanations interpret those saved results
 On narrow screens, collapse record switching and data-use detail, keep messages,
 authorization and the composer in a non-overlapping scroll flow, and respect the
 bottom navigation and safe areas. Saved explanations remain readable offline.
+
+## Daily overview and analysis layout (2026-11-04)
+
+Home has one date control and one upload entry. The selected day's diary and
+respiratory recording come first, followed by the past seven days and recording
+plans; history and a small set of knowledge links remain available. Cards use
+their own container width to select one or two columns, including when the AI
+panel reduces the available space.
+
+The analysis workbench keeps waveforms and windows in the primary column, with
+the existing AI entry, recording information and notes in a secondary column.
+Below 60rem of available analysis width these sections stack in reading order.
+Section links provide direct access without creating another analysis or chat
+implementation. Existing save guards, data states and AI consent remain in place.
