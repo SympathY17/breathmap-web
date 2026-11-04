@@ -3,6 +3,18 @@ import { Activity, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { useAuth } from './lib/user';
 
+function authErrorMessage(issue: unknown, t: (en: string, zh: string) => string) {
+  const code = issue && typeof issue === 'object' && 'code' in issue ? issue.code : undefined;
+  const message = issue instanceof Error ? issue.message : '';
+  if (code === 'over_email_send_rate_limit' || message.toLowerCase().includes('email rate limit exceeded')) {
+    return t('The verification email sending limit has been reached. Please wait before trying again. If this continues, contact the project owner to check the email service.', '验证邮件发送已达上限，请稍后再试。若仍然出现，请联系项目负责人检查发信服务。');
+  }
+  if (code === 'email_address_not_authorized') {
+    return t('The current email service cannot send verification emails to this address. Contact the project owner to configure email delivery.', '当前发信服务无法向这个邮箱发送验证邮件，请联系项目负责人完成发信配置。');
+  }
+  return message || t('This request could not be completed. Please try again.', '暂时无法完成，请重试。');
+}
+
 export default function AuthPages({ path, notice = '' }: { path: string; notice?: string }) {
   const { user } = useAuth();
   const [lang, setLang] = useState(() => localStorage.getItem('breathmap-language') === 'en' ? 'en' : 'zh');
@@ -49,7 +61,7 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
         const { error: issue } = await supabase.auth.signInWithPassword({ email: email.trim(), password }); if (issue) throw issue;
         window.location.replace('/');
       }
-    } catch (issue) { setError(issue instanceof Error ? issue.message : t('This request could not be completed. Please try again.', '暂时无法完成，请重试。')); }
+    } catch (issue) { setError(authErrorMessage(issue, t)); }
     finally { setBusy(false); }
   }
   const title = account ? t('Your account', '你的账号') : signup ? t('Create your BreathMap account', '创建 BreathMap 账号') : forgot ? t('Reset your password', '重置密码') : reset ? t('Choose a new password', '设置新密码') : t('Welcome to BreathMap', '欢迎使用 BreathMap');

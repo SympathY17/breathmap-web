@@ -181,3 +181,23 @@ Browser observations and screenshot: `browser-results.json` and
 `production-restored-record.png` in the same ignored evidence directory. The
 worker remains running on the original configured computer at the user's request.
 Startup is still manual after shutdown/restart; see [worker instructions](../worker/README.md).
+
+## 2026-11-04 public authentication layout and signup diagnosis
+
+The reported `email rate limit exceeded` was confirmed in production Auth logs
+as HTTP 429 / `over_email_send_rate_limit`. The dashboard still has custom SMTP
+disabled. This is an email-delivery blocker, not a successful signup or a wrong
+password. The default sender is restricted to project-team destinations as well
+as its project-wide hourly quota. No Auth settings, confirmation requirements,
+email quota or credentials were changed; ordinary public signup still requires
+working email delivery.
+
+Public login, signup, recovery and reset routes now exclude the entire workspace
+shell at the application boundary, including while anonymous or restoring a
+session. Authenticated account settings retain normal navigation. Individual
+navigation components already hid public Auth routes; the signed-out production
+login checked before this patch also showed no sidebar, so the user's original
+sidebar screenshot/session remains unverified. Email-limit and unauthorized-email
+errors now explain the delivery problem in the selected language without showing
+a success message. All 176 tests across 19 files, TypeScript and the production
+build passed. Tests simulate failures without sending email or creating accounts.
