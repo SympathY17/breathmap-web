@@ -104,3 +104,21 @@ were retained; existing records and accounts were untouched.
 
 SMTP and local analysis worker recovery remain deferred. Existing retained QA
 accounts and recordings must not be deleted.
+
+## Direct-send and deletion release
+
+PR #5 merged as `f22ba89a7d0b13c373233103735aed4d8e76d414`.
+Production deploy `6aeacd05c52efd1a41a99c86` became ready at
+2026-11-04 14:14:00 CST. Nine production checks passed: a real DeepSeek answer
+without an ai_consent field, foreign-owner deletion rejection, owned deletion,
+idempotent deletion, hidden deleted messages, replay rejection, plaintext
+redaction with retained counters, pending-reply deletion rejection and deletion
+after that synthetic pending fixture completed. Only the two newly created
+synthetic conversations were deleted; the two new QA accounts remain and all
+previous accounts, conversations and recordings were preserved. One real AI turn
+was used, not a real-user trial. The route returned HTTP 200 and all 17 published
+JS/CSS assets matched the tested build, with no server-secret matches.
+
+Evidence: `.tmp/chat-delete-20261104/live-smoke.json`,
+`production-assets.json`, `secret-scan.json`, `desktop-chat.png`,
+`phone-delete-confirm.png` and `drawer-delete-confirm.png` (ignored local files).
