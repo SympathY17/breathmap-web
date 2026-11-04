@@ -42,6 +42,9 @@ waveform-specific entries retain their selected record and interval. A visible
 record discussion label and a return-to-general action distinguish the contexts.
 The AI page follows the same desktop/sidebar, tablet/top and phone/bottom
 navigation rules as the other pages; it has no second desktop navigation bar.
+Ordinary conversation sends directly, with a brief DeepSeek notice below the
+composer. Saved chats have a Delete conversation action with confirmation;
+pending replies disable deletion. Recording analysis authorization remains separate.
 
 ## Daily overview and analysis layout (2026-11-04)
 

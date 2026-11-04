@@ -28,8 +28,8 @@ async function limitedJson(request) {
 
 function databaseError(payload, status) {
   const message = String(payload?.message ?? '');
-  for (const code of ['RATE_LIMITED', 'CONVERSATION_BUSY', 'REQUEST_ID_CONFLICT', 'CONVERSATION_NOT_FOUND', 'INVALID_REQUEST']) {
-    if (message === code) return new ServiceError(code, code === 'RATE_LIMITED' ? 429 : code === 'CONVERSATION_BUSY' || code === 'REQUEST_ID_CONFLICT' ? 409 : code === 'CONVERSATION_NOT_FOUND' ? 404 : 400);
+  for (const code of ['RATE_LIMITED', 'CONVERSATION_BUSY', 'REQUEST_ID_CONFLICT', 'CONVERSATION_NOT_FOUND', 'CONVERSATION_DELETED', 'INVALID_REQUEST']) {
+    if (message === code) return new ServiceError(code, code === 'RATE_LIMITED' ? 429 : code === 'CONVERSATION_BUSY' || code === 'REQUEST_ID_CONFLICT' ? 409 : code === 'CONVERSATION_NOT_FOUND' ? 404 : code === 'CONVERSATION_DELETED' ? 410 : 400);
   }
   return new ServiceError('SERVICE_UNAVAILABLE', status === 401 || status === 403 ? 503 : 503);
 }
@@ -48,14 +48,16 @@ export async function handleSleepChat(request, dependencies = {}) {
     const token = request.headers.get('authorization');
     if (!token?.startsWith('Bearer ') || token.length > 8192) throw new ServiceError('AUTH_REQUIRED', 401);
     body = await limitedJson(request);
-    if (!body || typeof body !== 'object' || !UUID.test(body.conversation_id) || !UUID.test(body.request_id)
-      || typeof body.message !== 'string' || !body.message.trim() || Array.from(body.message.trim()).length > 800
-      || !['zh', 'en'].includes(body.language) || body.ai_consent !== true) throw new ServiceError('INVALID_REQUEST', 400);
+    const deleting = body?.action === 'delete';
+    if (!body || typeof body !== 'object' || !UUID.test(body.conversation_id)
+      || (body.action !== undefined && body.action !== 'delete' && body.action !== 'chat')
+      || (!deleting && (!UUID.test(body.request_id) || typeof body.message !== 'string' || !body.message.trim()
+        || Array.from(body.message.trim()).length > 800 || !['zh', 'en'].includes(body.language)))) throw new ServiceError('INVALID_REQUEST', 400);
     const base = (getEnv('SUPABASE_URL') ?? getEnv('VITE_SUPABASE_URL') ?? '').replace(/\/$/, '');
     const publicKey = getEnv('SUPABASE_PUBLISHABLE_KEY') ?? getEnv('VITE_SUPABASE_ANON_KEY') ?? getEnv('VITE_SUPABASE_PUBLISHABLE_KEY');
     const serviceKey = getEnv('SUPABASE_SECRET_KEY') ?? getEnv('SUPABASE_SERVICE_ROLE_KEY');
     const aiKey = getEnv('DEEPSEEK_API_KEY');
-    if (!/^https:\/\/[a-z0-9.-]+\.supabase\.co$/.test(base) || !publicKey || !serviceKey || !aiKey) throw new ServiceError('SERVICE_UNAVAILABLE');
+    if (!/^https:\/\/[a-z0-9.-]+\.supabase\.co$/.test(base) || !publicKey || !serviceKey || (!deleting && !aiKey)) throw new ServiceError('SERVICE_UNAVAILABLE');
     let auth;
     try {
       const response = await fetcher(base + '/auth/v1/user', { headers: { apikey: publicKey, Authorization: token }, signal: AbortSignal.timeout(6000) });
@@ -73,6 +75,11 @@ export async function handleSleepChat(request, dependencies = {}) {
       if (!response.ok) throw databaseError(payload, response.status);
       return payload;
     };
+    if (deleting) {
+      const result = await rpc('delete_sleep_conversation', { p_user_id: owner, p_conversation_id: body.conversation_id });
+      if (result?.status !== 'deleted') throw new ServiceError('SERVICE_UNAVAILABLE');
+      return json({ status: 'deleted', conversation_id: body.conversation_id });
+    }
     const start = await rpc('begin_sleep_chat', { p_user_id: owner, p_conversation_id: body.conversation_id, p_request_id: body.request_id, p_question: body.message.trim(), p_language: body.language });
     if (!['claimed','pending','completed','failed'].includes(start?.status)) throw new ServiceError('SERVICE_UNAVAILABLE');
     const identity = { conversation_id: body.conversation_id, request_id: body.request_id };

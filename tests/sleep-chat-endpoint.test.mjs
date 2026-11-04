@@ -5,7 +5,7 @@ const owner = '11111111-1111-4111-8111-111111111111';
 const conversation = '22222222-2222-4222-8222-222222222222';
 const requestId = '33333333-3333-4333-8333-333333333333';
 const environment = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'public-key', SUPABASE_SECRET_KEY: 'server-key', DEEPSEEK_API_KEY: 'provider-key' };
-const body = { conversation_id: conversation, request_id: requestId, message: 'How can I improve my bedtime routine?', language: 'en', ai_consent: true };
+const body = { conversation_id: conversation, request_id: requestId, message: 'How can I improve my bedtime routine?', language: 'en' };
 const respond = (value, status = 200) => new Response(JSON.stringify(value), { status });
 const request = (value = body, headers = {}) => new Request('https://breathmap.example/.netlify/functions/sleep-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer user-jwt', ...headers }, body: JSON.stringify(value) });
 const deps = fetch => ({ fetch, env: key => environment[key] });
@@ -13,6 +13,7 @@ function service(options = {}) {
   return vi.fn(async (url, init) => {
     if (url.endsWith('/auth/v1/user')) return respond(options.user ?? { id: owner }, options.authStatus ?? 200);
     if (url.endsWith('/begin_sleep_chat')) return respond(options.claim ?? { status: 'claimed', history: [] }, options.claimStatus ?? 200);
+    if (url.endsWith('/delete_sleep_conversation')) return respond(options.deleted ?? { status: 'deleted' }, options.deleteStatus ?? 200);
     if (url.endsWith('/finish_sleep_chat')) {
       if (options.finishFails) throw new Error('database temporarily unavailable');
       return respond({ status: 'completed' });
@@ -33,9 +34,8 @@ describe('general sleep chat endpoint', () => {
     expect((await handleSleepChat(request({ ...body, message: 'x'.repeat(9000) }), deps(fetch))).status).toBe(413);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('requires explicit consent, an owned session identity and bounded valid input', async () => {
+  it('requires an owned session identity and bounded valid input', async () => {
     const fetch = service();
-    expect((await handleSleepChat(request({ ...body, ai_consent: false }), deps(fetch))).status).toBe(400);
     expect((await handleSleepChat(request({ ...body, message: 'x'.repeat(801) }), deps(fetch))).status).toBe(400);
     expect((await handleSleepChat(request({ ...body, conversation_id: '../../recordings' }), deps(fetch))).status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
@@ -45,6 +45,40 @@ describe('general sleep chat endpoint', () => {
     const anonymous = service({ user: { id: owner, is_anonymous: true } });
     expect((await handleSleepChat(request(), deps(anonymous))).status).toBe(401);
     expect(anonymous).toHaveBeenCalledTimes(1);
+  });
+  it('accepts ordinary sends without a checkbox and remains compatible with older payloads', async () => {
+    for (const value of [body,{ ...body,ai_consent:true }]) {
+      const response = await handleSleepChat(request(value),deps(service()));
+      expect(response.status).toBe(200);
+    }
+  });
+  it('deletes only the authenticated owner conversation without requiring or calling the AI provider', async () => {
+    const fetch = service();
+    const response = await handleSleepChat(request({action:'delete',conversation_id:conversation,user_id:'forged'}), {
+      fetch,env:key=>key==='DEEPSEEK_API_KEY'?undefined:environment[key],
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({status:'deleted',conversation_id:conversation});
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const call = fetch.mock.calls.find(([url])=>url.endsWith('/delete_sleep_conversation'));
+    expect(JSON.parse(call[1].body)).toEqual({p_user_id:owner,p_conversation_id:conversation});
+    expect(fetch.mock.calls.some(([url])=>url.includes('deepseek')||url.endsWith('/begin_sleep_chat'))).toBe(false);
+  });
+  it('rejects unauthorized and malformed deletes before any service call', async () => {
+    const fetch = service();
+    expect((await handleSleepChat(request({action:'delete',conversation_id:conversation},{Authorization:''}),deps(fetch))).status).toBe(401);
+    expect((await handleSleepChat(request({action:'delete',conversation_id:'../../other'}),deps(fetch))).status).toBe(400);
+    expect((await handleSleepChat(request({...body,action:'unsupported'}),deps(fetch))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('returns delete busy and ownership errors with a matching conversation identity', async () => {
+    for (const [code,status] of [['CONVERSATION_BUSY',409],['CONVERSATION_NOT_FOUND',404]]) {
+      const fetch = service({deleted:{message:code},deleteStatus:400});
+      const response = await handleSleepChat(request({action:'delete',conversation_id:conversation}),deps(fetch));
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({conversation_id:conversation,status:'failed',error:code});
+      expect(fetch).toHaveBeenCalledTimes(2);
+    }
   });
   it('uses the verified owner, stores the answer and sends only bounded conversation context', async () => {
     const fetch = service({ claim: { status: 'claimed', history: Array.from({ length: 8 }, (_, i) => ({ question: 'question ' + i, answer: 'a'.repeat(3000) })) } });
@@ -75,7 +109,7 @@ describe('general sleep chat endpoint', () => {
     }
   });
   it('obeys atomic database rate limits, ownership and request-id conflicts before billing', async () => {
-    for (const [error, status] of [['RATE_LIMITED',429],['CONVERSATION_BUSY',409],['CONVERSATION_NOT_FOUND',404],['REQUEST_ID_CONFLICT',409]]) {
+    for (const [error, status] of [['RATE_LIMITED',429],['CONVERSATION_BUSY',409],['CONVERSATION_NOT_FOUND',404],['CONVERSATION_DELETED',410],['REQUEST_ID_CONFLICT',409]]) {
       const fetch = service({ claim: { message: error }, claimStatus: 400 });
       const response = await handleSleepChat(request(), deps(fetch));
       expect(response.status).toBe(status);

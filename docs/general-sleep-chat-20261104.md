@@ -12,9 +12,16 @@ and clearly states that analysis must finish before its results can be explained
 The desktop uses the common sidebar, tablets the common top navigation and phones
 the existing bottom navigation. The old AI-only navigation and introduction panel
 have been removed. The complete page and floating panel share account-scoped
-conversation selection and drafts, while AI-processing consent resets on context
-change. General conversation history is saved in the cloud; draft text remains
+conversation selection and drafts. Ordinary chat sends directly without a consent
+checkbox; a short DeepSeek notice stays below the composer. The separate recording
+analysis authorization is unchanged. General conversation history is saved in the cloud; draft text remains
 session-local rather than cross-device synchronized.
+
+Choose a saved conversation and use Delete conversation to remove the whole chat.
+The confirmation initially focuses Cancel. Cancel preserves the conversation;
+successful deletion clears its local draft and opens a new chat. Deletion is
+disabled while a reply is pending, history is loading or another operation is
+active. Failed or unconfirmed deletion stays visible and can be retried.
 
 ## Backend and data
 
@@ -36,12 +43,25 @@ minutes. Up to six completed turns (bounded excerpts) are supplied as context.
 Provider calls time out at 35 seconds. Unknown completion is checked explicitly;
 the client does not silently repeat a paid request.
 
+Migration `supabase/migrations/20261104054825_sleep_chat_deletion.sql` adds a
+deletion marker and the service-role-only, SECURITY INVOKER
+`delete_sleep_conversation` RPC. The cloud applied it as
+`20261104055326_sleep_chat_deletion`; do not reapply it. Deletion redacts the title,
+questions and answers, and RLS hides the conversation and messages. Minimal request
+IDs, owner IDs and timing metadata remain for rate limits and replay protection.
+An old request cannot resurrect a deleted conversation. Sending and deletion use
+the same account advisory lock; a pending reply in the target chat blocks deletion.
+The migration itself does not delete or redact existing conversations.
+
 ## Verification and release gate
 
-140 component, request, endpoint and temporary PostgreSQL tests passed across 17
+158 component, request, endpoint and temporary PostgreSQL tests passed across 17
 files. TypeScript and the production build passed. Tests include account switching
 during session lookup, stale results after unmount, ownership, RLS, write denial,
 same-ID retries, failure caching, concurrent claim scheduling and rate limits.
+The deletion update also covers plaintext redaction, target-chat pending guards,
+both serialized send/delete orderings, cancelled/retried deletion and delayed
+authentication restoration with the actual AssistantProvider.
 PGlite checks do not establish real multi-connection load acceptance.
 
 Browser checks use the read-only synthetic fixture: general chat without a record,
@@ -49,6 +69,13 @@ explicit record selection and return, retained draft and consent reset, English
 and Chinese at 320/375/414/768/1024/1440px, and a 375x400 short-screen composer.
 No page-wide horizontal overflow was found. Evidence is local and ignored by Git
 under `.tmp/general-assistant-20261104/`; it is not real-device or live AI proof.
+
+The direct-send/deletion update was clicked through in an isolated local fixture:
+Cancel preserves the saved reply; confirmation removes the chat and opens a new
+one; reload does not restore it. The confirmation initially focuses Cancel and
+its controls sit above the overlay. Checks at 375/768/1440px found no page-wide
+horizontal overflow. New evidence is under `.tmp/chat-delete-20261104/`. A late
+CSS cascade issue that blocked the confirmation button was fixed before release.
 
 The user explicitly authorized Netlify Free's builds/functions/runtime scopes
 for the two production-only server variables, `DEEPSEEK_API_KEY` and
