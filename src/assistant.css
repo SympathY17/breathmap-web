@@ -49,8 +49,19 @@
 .assistant-page--conversation .assistant-page-intro h1 { font-size: clamp(1.75rem, 3vw, 2.25rem); }
 .assistant-shared-navigation { display: none; }
 .sleep-chat { gap: 1.25rem; }
-.sleep-chat-toolbar { display: flex; align-items: end; justify-content: space-between; gap: .75rem; }
-.sleep-chat-toolbar > label { display: grid; gap: .375rem; min-width: 0; max-width: 28rem; flex: 1; color: var(--color-muted); font-size: .75rem; }
+.sleep-chat-toolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: .75rem; }
+.sleep-chat-toolbar-actions, .sleep-chat-delete-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+body:has(.sleep-chat-delete-dialog) > .dialog-overlay { z-index: 150; }
+.dialog-content.sleep-chat-delete-dialog { z-index: 151; color: var(--color-ink); font-family: var(--font-body); }
+.sleep-chat-delete-dialog .dialog-header { display: grid; gap: .75rem; }
+.sleep-chat-delete-dialog .dialog-header > :first-child { margin: 0; }
+.sleep-chat-delete-dialog .dialog-header > :last-child { color: var(--color-muted); line-height: 1.7; }
+.sleep-chat-delete-title { overflow-wrap: anywhere; font-weight: 650; }
+.sleep-chat-delete-actions { justify-content: flex-end; }
+.sleep-chat-delete-actions button { min-height: var(--touch-target); }
+.sleep-chat-delete-actions .assistant-primary { color: var(--color-surface); background: var(--color-accent); }
+.sleep-chat-delete-dialog[aria-busy='true'] .dialog-close { display: none; }
+.sleep-chat-toolbar > label { display: grid; gap: .375rem; min-width: 0; max-width: 28rem; flex: 1 1 12rem; color: var(--color-muted); font-size: .75rem; }
 .sleep-chat-toolbar .assistant-secondary { flex: none; }
 .sleep-chat-messages { min-width: 0; min-height: 14rem; max-height: 32rem; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 1rem; padding-block: .25rem; }
 .sleep-chat-welcome { padding-block: .5rem; }

@@ -5,8 +5,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({ user: null as any, loading: false }));
+const chat = vi.hoisted(() => ({ list: vi.fn(), turns: vi.fn(), remove: vi.fn(), send: vi.fn() }));
 vi.mock('../lib/user', () => ({ useAuth: () => auth }));
+vi.mock('../lib/sleep-chat', () => ({ loadSleepConversations: chat.list, loadSleepTurns: chat.turns, deleteSleepConversation: chat.remove, sendSleepQuestion: chat.send, sleepChatError: () => 'Service unavailable' }));
 import { AssistantProvider, useAssistant } from './AssistantProvider';
+import GeneralSleepChat from './GeneralSleepChat';
 
 const userA = '11111111-1111-4111-8111-111111111111', userB = '99999999-9999-4999-8999-999999999999';
 const recordId = '22222222-2222-4222-8222-222222222222', conversation = '33333333-3333-4333-8333-333333333333', jobId = '44444444-4444-4444-8444-444444444444';
@@ -18,6 +21,7 @@ async function mount() { await act(async () => { root.render(<AssistantProvider>
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   auth.user = { id: userA }; auth.loading = false;
+  vi.clearAllMocks(); chat.list.mockResolvedValue([]); chat.turns.mockResolvedValue([]);
   sessionStorage.clear(); localStorage.clear();
   window.history.replaceState(null, '', '/assistant');
   container = document.createElement('div'); container.id = 'root'; document.body.append(container); root = createRoot(container);
@@ -25,6 +29,34 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
 
 describe('shared assistant session', () => {
+  it('initialises general chat after delayed authentication and can cancel, reopen and confirm deletion with the real provider', async () => {
+    auth.user = null; auth.loading = true;
+    const render = async () => { await act(async () => root.render(<AssistantProvider><Probe />{auth.user && !auth.loading && <GeneralSleepChat />}</AssistantProvider>)); };
+    await render();
+    auth.user = { id: userA }; auth.loading = false;
+    chat.list.mockResolvedValue([{ id: conversation, title: 'Saved sleep conversation' }]);
+    chat.turns.mockImplementation(async id => id === conversation ? [{ id: jobId, conversation_id: conversation, question: 'Saved question', answer: 'Saved reply', status: 'completed', language: 'en' }] : []);
+    await render();
+    expect(latest.conversations.general).toMatch(/^[a-f0-9-]{36}$/);
+    expect(container.querySelector('textarea')?.disabled).toBe(false);
+    await act(async () => { const select = container.querySelector('select')!; select.value = conversation; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(container.textContent).toContain('Saved reply');
+    const button = (name: string, scope: ParentNode = container) => Array.from(scope.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent === name)!;
+    // Provider's default language is Chinese; this also exercises its actual context updates.
+    await act(async () => button('删除对话').click());
+    let dialog = document.querySelector('[role=dialog]')!;
+    expect(document.activeElement).toBe(button('取消', dialog));
+    await act(async () => button('取消', dialog).click());
+    expect(chat.remove).not.toHaveBeenCalled();
+    await act(async () => button('删除对话').click()); dialog = document.querySelector('[role=dialog]')!;
+    chat.remove.mockImplementation(async id => { chat.list.mockResolvedValue([]); chat.turns.mockResolvedValue([]); return { status: 'deleted', conversation_id: id }; });
+    await act(async () => button('删除对话', dialog).click());
+    expect(chat.remove).toHaveBeenCalledWith(conversation, userA);
+    expect(latest.conversations.general).not.toBe(conversation);
+    expect(container.textContent).not.toContain('Saved reply');
+    expect(container.textContent).toContain('对话已删除。');
+    expect(document.querySelector('[role=dialog]')).toBeNull();
+  });
   it('restores a URL recording and interval after authentication finishes', async () => {
     auth.user = null; auth.loading = true;
     window.history.replaceState(null, '', `/assistant?recordId=${recordId}&result=${hash}&start=10&end=26`);

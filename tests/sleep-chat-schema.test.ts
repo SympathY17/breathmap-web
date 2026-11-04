@@ -20,6 +20,7 @@ beforeAll(async () => {
     grant execute on function auth.uid() to anon,authenticated,service_role;
     insert into auth.users(id) values('${owner}'),('${other}');`);
   await db.exec(readFileSync(new URL('../supabase/migrations/20261104035732_sleep_chat.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261104054825_sleep_chat_deletion.sql', import.meta.url), 'utf8'));
 }, 30000);
 afterAll(async () => { await db?.close(); });
 
@@ -80,6 +81,76 @@ describe.sequential('sleep chat database contract and ownership', () => {
     }
     await expect(claim('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Too many questions')).rejects.toThrow(/RATE_LIMITED/);
     expect(await claim()).toMatchObject({status:'completed'});
+    await db.exec('reset role');
+  });
+});
+
+const erase = (id = conversation, user = owner) => query('select public.delete_sleep_conversation($1,$2) as result',[user,id]).then(rows=>rows[0].result);
+describe.sequential('sleep conversation deletion',()=>{
+  it('permits only the server and preserves ownership',async()=>{
+    await db.exec(`set role authenticated; set request.jwt.claim.sub='${owner}'`);
+    await expect(erase()).rejects.toThrow(/permission denied/);
+    await expect(query('delete from public.sleep_chat_conversations where id=$1',[conversation])).rejects.toThrow(/permission denied/);
+    await db.exec('reset role; set role anon');
+    await expect(erase()).rejects.toThrow(/permission denied/);
+    await db.exec('reset role; set role service_role');
+    await expect(erase(conversation,other)).rejects.toThrow(/CONVERSATION_NOT_FOUND/);
+    await expect(erase(crypto.randomUUID(),owner)).rejects.toThrow(/CONVERSATION_NOT_FOUND/);
+    await db.exec('reset role');
+  });
+  it('clears original text, hides all content, and retains replay/rate-limit metadata',async()=>{
+    await db.exec('set role service_role');
+    const before = (await query('select id,created_at from public.sleep_chat_messages where user_id=$1 order by id',[owner]));
+    expect(await erase()).toEqual({status:'deleted'});
+    expect(await erase()).toEqual({status:'deleted'});
+    const metadata = await query('select id,created_at from public.sleep_chat_messages where user_id=$1 order by id',[owner]);
+    expect(metadata).toEqual(before);
+    const content = await query('select question,answer,status,error_code from public.sleep_chat_messages where user_id=$1',[owner]);
+    expect(content.every(row=>row.question==='[Deleted]'&&row.answer===null&&row.status==='failed'&&row.error_code==='CONVERSATION_DELETED')).toBe(true);
+    expect((await query('select title,deleted_at from public.sleep_chat_conversations where id=$1',[conversation]))[0]).toMatchObject({title:'[Deleted]'});
+    await expect(claim()).rejects.toThrow(/CONVERSATION_DELETED/);
+    await expect(claim(crypto.randomUUID(),'Old tab with new request')).rejects.toThrow(/CONVERSATION_DELETED/);
+    await expect(claim(crypto.randomUUID(),'New conversation after deletion',owner,crypto.randomUUID())).rejects.toThrow(/RATE_LIMITED/);
+    await expect(finish()).rejects.toThrow(/REQUEST_NOT_PENDING/);
+    await db.exec(`reset role; set role authenticated; set request.jwt.claim.sub='${owner}'`);
+    expect(await query('select * from public.sleep_chat_conversations')).toEqual([]);
+    expect(await query('select * from public.sleep_chat_messages')).toEqual([]);
+    await db.exec('reset role');
+  });
+  it('blocks deletion during a reply but allows deleting another completed conversation',async()=>{
+    await db.exec('set role service_role');
+    const completedConv=crypto.randomUUID(),completedRequest=crypto.randomUUID(),pendingConv=crypto.randomUUID(),pendingRequest=crypto.randomUUID();
+    await claim(completedRequest,'Completed conversation',other,completedConv); await finish(completedRequest,other);
+    await claim(pendingRequest,'A reply in progress',other,pendingConv);
+    await expect(erase(pendingConv,other)).rejects.toThrow(/CONVERSATION_BUSY/);
+    expect(await erase(completedConv,other)).toEqual({status:'deleted'});
+    await finish(pendingRequest,other);
+    expect(await erase(pendingConv,other)).toEqual({status:'deleted'});
+    await db.exec('reset role');
+  });
+  it('allows an expired abandoned claim to be cleared and cannot resurrect it',async()=>{
+    await db.exec('set role service_role');
+    const conv=crypto.randomUUID(),requestId=crypto.randomUUID();
+    await claim(requestId,'An interrupted old request',other,conv);
+    await query("update public.sleep_chat_messages set created_at=now()-interval '3 minutes' where id=$1",[requestId]);
+    expect(await erase(conv,other)).toEqual({status:'deleted'});
+    await expect(finish(requestId,other)).rejects.toThrow(/REQUEST_NOT_PENDING/);
+    await expect(claim(requestId,'An interrupted old request',other,conv)).rejects.toThrow(/CONVERSATION_DELETED/);
+    await db.exec('reset role');
+  });
+  it('keeps deletion and a newly scheduled send mutually exclusive',async()=>{
+    await db.exec('set role service_role');
+    for (const deletingFirst of [false,true]) {
+      const conv=crypto.randomUUID(),firstId=crypto.randomUUID(),nextId=crypto.randomUUID();
+      await claim(firstId,'Existing conversation',other,conv); await finish(firstId,other);
+      const operations = deletingFirst ? [erase(conv,other),claim(nextId,'Racing send',other,conv)] : [claim(nextId,'Racing send',other,conv),erase(conv,other)];
+      const outcome = await Promise.allSettled(operations);
+      expect(outcome.filter(value=>value.status==='fulfilled')).toHaveLength(1);
+      const rejected = outcome.find(value=>value.status==='rejected') as PromiseRejectedResult;
+      expect(rejected.reason.message).toMatch(/CONVERSATION_BUSY|CONVERSATION_DELETED/);
+      if (!deletingFirst) { await finish(nextId,other); await erase(conv,other); }
+      await expect(claim(nextId,'Racing send',other,conv)).rejects.toThrow(/CONVERSATION_DELETED/);
+    }
     await db.exec('reset role');
   });
 });
