@@ -34,6 +34,7 @@ describe('shared assistant session', () => {
     expect(latest.target).toEqual({ recordingId: recordId, resultHash: hash, selection: { start_s: 10, end_s: 26 } });
   });
   it('keeps a draft, interval and conversation when closing and reopening, then remounting', async () => {
+    window.history.replaceState(null, '', `/analysis?recordId=${recordId}`);
     await mount();
     await act(async () => {
       latest.show({ recordingId: recordId, resultHash: hash, selection: { start_s: 10, end_s: 26 } });
@@ -58,6 +59,21 @@ describe('shared assistant session', () => {
     await act(async () => latest.close());
     await act(async () => latest.show());
     expect(latest.target?.selection).toEqual({ start_s: 12, end_s: 16 });
+  });
+  it('starts general discussion from a generic entry and retains the previous record draft', async () => {
+    await mount();
+    await act(async () => {
+      latest.show({ recordingId: recordId, resultHash: hash });
+      latest.saveDraft(draftKey, { question: 'A saved record question' });
+      latest.close();
+    });
+    window.history.replaceState(null, '', '/?ctxRecord=' + recordId);
+    await act(async () => latest.show());
+    expect(latest.target).toBeUndefined();
+    expect(latest.drafts[draftKey].question).toBe('A saved record question');
+    await act(async () => latest.selectRecord({ recordingId: recordId }));
+    await act(async () => latest.clearRecord());
+    expect(latest.target).toBeUndefined();
   });
   it('isolates accounts and rejects late callbacks captured by the previous account', async () => {
     await mount();

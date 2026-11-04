@@ -35,10 +35,7 @@ export default function DesktopNavigation() {
     if (value) context.set(key, value);
   }
   const toolHref = (view: string) => '/wellbeing?' + new URLSearchParams({ ...Object.fromEntries(context), view });
-  const recordId = url.searchParams.get('recordId') || url.searchParams.get('record') || url.searchParams.get('ctxRecord');
-  const assistantContext = new URLSearchParams(context);
-  if (recordId) assistantContext.set('recordId', recordId);
-  const assistantHref = '/assistant' + (assistantContext.size ? '?' + assistantContext : '');
+  const assistantHref = '/assistant';
   const sections = [
     { label: t('Workspace', '工作区'), items: [
       { href: '/', page: 'home', icon: House, label: t('Daily overview', '当天概览'), active: path === '/' },

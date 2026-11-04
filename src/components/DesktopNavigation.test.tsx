@@ -20,10 +20,10 @@ describe('Desktop workspace navigation', () => {
     auth.user = null; await mount(); expect(container.querySelector('aside')).toBeNull();
     auth.user = { id: 'qa-user' }; window.history.replaceState(null, '', '/reset-password'); await mount(); expect(container.querySelector('aside')).toBeNull();
   });
-  it('keeps the selected recording when opening the AI workspace', async () => {
+  it('opens general sleep chat from global navigation without implicitly attaching a recording', async () => {
     window.history.replaceState(null, '', '/analysis?recordId=qa-record'); await mount();
     expect(container.querySelector('a[aria-current="page"]')?.textContent).toBe('History');
-    expect(container.querySelector<HTMLAnchorElement>('a[href^="/assistant"]')?.getAttribute('href')).toBe('/assistant?recordId=qa-record');
+    expect(container.querySelector<HTMLAnchorElement>('a[href^="/assistant"]')?.getAttribute('href')).toBe('/assistant');
   });
   it('routes navigation through the existing unsaved-edit guard', async () => {
     window.history.replaceState(null, '', '/wellbeing?view=diary&ctxDate=2026-11-04&ctxRecord=qa-record'); await mount();

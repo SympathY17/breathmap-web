@@ -340,9 +340,7 @@ function PrimaryNavigation({t,links}:any){
  const section=PAGE==="wellbeing"?toolSection:["recordings","upload","report","analysis","trash"].includes(PAGE)?"recordings":PAGE;
  const daily=(id:string)=>withQuery(links.wellbeing,{view:id,ctxDate:bmReadJourney().date});
  const recordingsLink=links.recordings;
- const assistantQuery=new URLSearchParams(window.location.search);
- const assistantRecord=assistantQuery.get("recordId")||assistantQuery.get("record")||assistantQuery.get("ctxRecord");
- const assistantLink=withQuery(links.assistant,{ctxDate:bmReadJourney().date,...(assistantRecord?{recordId:assistantRecord}:{})});
+ const assistantLink=links.assistant;
  const items=[
   {id:"home",en:"Home",zh:"个人首页",to:links.home,page:"home"},
   {id:"recordings",en:"Recordings",zh:"呼吸记录",to:recordingsLink,page:"recordings"},
