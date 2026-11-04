@@ -2,7 +2,28 @@
 
 This worker connects the new Supabase website to the existing analysis installation. It makes outbound HTTPS requests only; no inbound port, public tunnel or Softr token is used. The original model, numerical implementation and old Softr bridge ledger are unchanged.
 
-The website remains available when this computer is off. New analysis, report, chat and detailed waveform requests wait until the worker is running. Previously saved metrics, all analysis windows, reports and the overview waveform remain readable from the user's private cloud data.
+The website remains available when this computer is off. New analysis, recording-specific report/chat and detailed waveform requests wait until the worker is running. General sleep conversations run independently on Netlify. Previously saved metrics, all analysis windows, reports and the overview waveform remain readable from the user's private cloud data.
+
+## Start again after restarting this computer
+
+There is no automatic startup service. Under the same configured Windows account,
+open PowerShell and run:
+
+```powershell
+& 'E:\Codex Data\学校课程\BreathMap_web\worker\Run-Worker.ps1'
+```
+
+Keep that window open (minimizing it is fine), the computer awake and the internet
+connected while new analysis is needed. `{"processed":0}` means it is idle and
+waiting for a job. Closing the terminal, signing out or shutting down stops it;
+sleep/hibernation pauses processing. Run the same command after restarting.
+Do not reconfigure credentials or start a second worker. Stop with Ctrl+C when no
+job is running. The launcher uses the existing encrypted credentials; Netlify,
+GitHub and Supabase dashboards do not need to be open.
+
+Automation hosts that redirect `LOCALAPPDATA` must supply the configured Windows
+profile's actual local AppData directory for the existing DeepSeek credential
+store. This does not change the runtime sandbox (`E:\breathmap`).
 
 ## Requirements
 

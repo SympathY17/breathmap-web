@@ -121,3 +121,45 @@ message/composer overlap. No real AI request, original-host startup, participant
 upload or real-device test was performed. See
 [the release record](ai-assistant-20261031.md) and
 [the backend contract](assistant-context.md) for deployment and evidence limits.
+
+## 2026-11-04 analysis-host restoration
+
+The existing analysis installation and 39-file numerical bundle were checked,
+the configured Windows account's protected credentials were reused, and the
+single local worker was restarted. The cloud heartbeat is fresh with
+`assistant_protocol=1` and `assistant_seen_at=last_seen`. No second analysis host,
+automatic startup service, model retraining or SMTP change was introduced.
+
+One new retained synthetic account and one known 60-second XLSX recording passed
+45 live API/real-engine checks: private upload without implicit analysis,
+numerical processing, complete bound window collections, overview, a fresh
+10–20-second waveform request, a real AI report, two contextual questions with
+verified history receipts/citations, unchanged numerical artifacts after AI, and
+fresh-login reads of the saved results and answers. The report plus two questions
+used six successful DeepSeek completions. The synthetic fixture's existing
+partial-coverage status was preserved, not relabelled as complete data or a model
+accuracy result. No real participant data or existing retained resources changed.
+
+The initial script completed all workflow checks but then failed its optional
+browser-login handoff. That original report remains intact. The helper was fixed
+for the REST response shape and canonical root URL; its implicit magic link did
+not match this site's PKCE login flow. A new password was set only for the same
+synthetic QA account and delivered once in memory to the controller. Normal
+production password login then succeeded. No production Auth configuration was
+changed, no test password was stored, and no model/AI request was repeated to
+resolve the handoff issue.
+
+The production browser displayed the new recording, numerical metrics, saved
+live report and both linked questions. Reading the report did not regenerate it.
+Browser testing also found a genuine range-restoration bug: an existing detailed
+waveform could show 10–20 seconds while the initial inputs still showed 0–30.
+Applying a saved waveform now synchronizes the time inputs to its actual range.
+A draft guard prevents polling, a pending reply or a delayed overview from
+overwriting a manually edited or citation-selected interval. Three new regression
+cases cover those boundaries; all 161 tests across 17 files, TypeScript and the
+production build passed. Source/build scanning found no server-secret matches.
+
+Raw, sanitized evidence is retained under `.tmp/analysis-restore-20261104/`,
+including `live-57b5bb99-269a-459f-bcb3-daf944cfc5d7.json` and separate handoff
+outcomes. This directory is ignored by Git. All new synthetic resources are
+retained for manual acceptance; the existing manual-retention decisions stand.

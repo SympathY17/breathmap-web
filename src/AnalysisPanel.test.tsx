@@ -44,6 +44,16 @@ function button(text: string) {
 async function click(element: HTMLElement) { await act(async () => { element.click(); }); }
 async function tick() { await act(async () => { await vi.advanceTimersByTimeAsync(5000); }); }
 function plots() { return [...container.querySelectorAll('svg[role="img"]')].map(element => element.getAttribute('aria-label')); }
+function rangeInputs() { return [...container.querySelectorAll<HTMLInputElement>('.wave-controls input')]; }
+async function editRange(start: string, end: string) {
+  await act(async () => {
+    for (const [index, value] of [start, end].entries()) {
+      const input = rangeInputs()[index];
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+}
 async function mount() { await act(async () => { root.render(<AnalysisPanel recordingId={recordId} detailed />); }); }
 
 beforeEach(() => {
@@ -66,6 +76,48 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => { root.unmount(); }); container.remove(); vi.useRealTimers(); (globalThis as any).IS_REACT_ACT_ENVIRONMENT = false; });
 
 describe('AnalysisPanel saved-result version boundaries', () => {
+  it('restores the saved interval in both waveforms and inputs before asking AI about it', async () => {
+    mocked.jobs = [{ id: 'saved-interval', operation: 'waveform', status: 'completed', payload: { _result_sha256: hashA, start: 10, end: 20 }, result: { result_sha256: hashA, waveform: waveform(10, 20) } }];
+    await mount();
+    expect(plots()).toContain('Magnetic signal, 10–20 s');
+    expect(rangeInputs().map(input => input.value)).toEqual(['10', '20']);
+    await click(button('Ask about this interval'));
+    expect(mocked.showAssistant).toHaveBeenCalledWith({ recordingId: recordId, resultHash: hashA, selection: { start_s: 10, end_s: 20 } });
+    expect(mocked.requestJob).not.toHaveBeenCalled();
+  });
+  it('keeps edited bounds through polling and a pending interval reply without replacing the draft', async () => {
+    const oldJob = { id: 'saved-interval', operation: 'waveform', status: 'completed', payload: { _result_sha256: hashA, start: 10, end: 20 }, result: { result_sha256: hashA, waveform: waveform(10, 20) } };
+    mocked.jobs = [oldJob];
+    await mount();
+    await editRange('20', '40');
+    mocked.jobs = [{ ...oldJob }]; await tick();
+    expect(rangeInputs().map(input => input.value)).toEqual(['20', '40']);
+    mocked.requestJob.mockImplementation(async () => {
+      mocked.jobs = [{ id: 'pending-interval', operation: 'waveform', status: 'queued', payload: { _result_sha256: hashA, start: 20, end: 40 } }, oldJob];
+      return { id: 'pending-interval' };
+    });
+    await act(async () => { container.querySelector('.wave-controls')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(mocked.requestJob).toHaveBeenCalledWith(recordId, 'waveform', expect.objectContaining({ start: 20, end: 40 }));
+    await editRange('25', '45');
+    mocked.jobs = [{ ...mocked.jobs[0], status: 'completed', result: { result_sha256: hashA, waveform: waveform(20, 40) } }, oldJob];
+    await tick();
+    expect(plots()).toContain('Magnetic signal, 20–40 s');
+    expect(rangeInputs().map(input => input.value)).toEqual(['25', '45']);
+    await tick();
+    expect(rangeInputs().map(input => input.value)).toEqual(['25', '45']);
+  });
+  it('does not replace a citation-selected interval when the initial overview arrives later', async () => {
+    let resolveOverview!: (response: any) => void;
+    mocked.download.mockImplementationOnce(() => new Promise(resolve => { resolveOverview = resolve; }));
+    await mount();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('breathmap:focus-evidence', { detail: { recordingId: recordId, resultHash: hashA, selection: { start_s: 10, end_s: 15, window_id: 'OLD-06', kind: 'model' } } }));
+    });
+    expect(rangeInputs().map(input => input.value)).toEqual(['10', '15']);
+    await act(async () => { resolveOverview({ data: { size: 100, text: async () => JSON.stringify(waveform(0, 60)) }, error: null }); });
+    expect(rangeInputs().map(input => input.value)).toEqual(['10', '15']);
+    expect(container.querySelector('tr[aria-selected="true"]')?.textContent).toContain('OLD-06');
+  });
   it('loads a selected window immediately and clears the old interval when a new result SHA arrives', async () => {
     mocked.result.display.report = { status: 'ready', source: 'simulated', claims: [{ text: 'Old synthetic explanation', evidence_ids: ['QA-OLD'], values: [] }], evidence: { 'QA-OLD': { values: { proof: 'OLD-SOURCE-ONLY' } } } };
     await mount();
