@@ -10,7 +10,7 @@ The website is deployed at https://breathmap-sympathy.netlify.app. Production is
 
 ## Use the website and analysis host
 
-Sign in, upload a compatible XLSX recording, then explicitly request analysis. Saved results remain available when the analysis host is off. New numerical, waveform-detail and AI requests need the current analysis computer to be running.
+Sign in, upload a compatible XLSX recording, then explicitly request analysis. Saved results remain available when the analysis host is off. New numerical, waveform-detail and recording-specific AI requests need the current analysis computer to be running. General sleep conversations run independently on Netlify.
 
 On the configured Windows account, open PowerShell and run:
 
