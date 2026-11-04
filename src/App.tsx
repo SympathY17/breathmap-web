@@ -11,6 +11,7 @@ import DesktopNavigation from './components/DesktopNavigation';
 import './app.css';
 import './workspace.css';
 
+const publicAuthPaths = ['/login', '/sign-up', '/forgot-password', '/reset-password'];
 const pages = {
   '/': lazy(() => import('./pages/home')),
   '/recordings': lazy(() => import('./pages/recordings')),
@@ -28,7 +29,7 @@ function Routes() {
   const path = window.location.pathname.replace(/\/$/, '') || '/';
   if (!isConfigured) return <main className="auth-shell"><section className="auth-card"><p className="eyebrow">BreathMap</p><h1>Preparing your workspace</h1><p>The website is waiting for its database connection. No personal data has been loaded.</p><p>网站正在等待数据库配置，尚未载入个人数据。</p></section></main>;
   if (loading) return <main className="app-loading" role="status">Opening BreathMap…</main>;
-  const native = ['/login', '/sign-up', '/forgot-password', '/reset-password', '/account'].includes(path);
+  const native = publicAuthPaths.includes(path) || path === '/account';
   if (native || !user) return <AuthPages path={!user && !native ? '/login' : path} notice={error} />;
   if (path === '/assistant') return <AssistantPage />;
   const Page = pages[path as keyof typeof pages];
@@ -38,4 +39,10 @@ function Routes() {
   if ((path === '/analysis' || path === '/report') && id) return <AnalysisPanel key={`${user.id}:${id}`} recordingId={id} detailed={path === '/analysis'} />;
   return <Suspense fallback={<main className="app-loading" role="status">Loading your workspace…</main>}><Page /></Suspense>;
 }
-export default function App() { return <AuthProvider><AssistantProvider><div className="workspace-shell"><DesktopNavigation /><div className="workspace-content"><Routes /></div></div><MobileNavigation /><AssistantSurface /></AssistantProvider></AuthProvider>; }
+function AppLayout() {
+  const { loading, user } = useAuth();
+  const path = window.location.pathname.replace(/\/$/, '') || '/';
+  if (!isConfigured || loading || !user || publicAuthPaths.includes(path)) return <Routes />;
+  return <><div className="workspace-shell"><DesktopNavigation /><div className="workspace-content"><Routes /></div></div><MobileNavigation /><AssistantSurface /></>;
+}
+export default function App() { return <AuthProvider><AssistantProvider><AppLayout /></AssistantProvider></AuthProvider>; }
