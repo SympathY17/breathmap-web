@@ -49,12 +49,7 @@ export default function MobileNavigation() {
   const active = path === '/' ? 'home' : path === '/learn' ? 'learn'
     : path === '/wellbeing' ? ['diary', 'reaction'].includes(view) ? 'daily' : ['monitoring', 'trends'].includes(view) ? 'recordings' : 'more'
     : ['/recordings', '/upload', '/report', '/analysis', '/trash'].includes(path) ? 'recordings' : 'more';
-  const assistantQuery = new URLSearchParams();
-  const assistantRecord = url.searchParams.get('recordId') || url.searchParams.get('record') || url.searchParams.get('ctxRecord');
-  if (assistantRecord) assistantQuery.set('recordId', assistantRecord);
-  const assistantDate = url.searchParams.get('ctxDate');
-  if (assistantDate) assistantQuery.set('ctxDate', assistantDate);
-  const assistantHref = '/assistant' + (assistantQuery.size ? '?' + assistantQuery : '');
+  const assistantHref = '/assistant';
   function navigateTool(event: MouseEvent<HTMLAnchorElement>, next: string) {
     setOpen(false);
     if (path === '/wellbeing' && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {

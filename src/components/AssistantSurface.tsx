@@ -5,6 +5,7 @@ import { useAuth } from '../lib/user';
 import { analysisLink } from '../lib/assistant-context';
 import { useAssistant } from './AssistantProvider';
 import AssistantView from './AssistantView';
+import GeneralSleepChat from './GeneralSleepChat';
 import '../assistant.css';
 
 export default function AssistantSurface() {
@@ -32,8 +33,8 @@ export default function AssistantSurface() {
       <Dialog.Portal>
         {!wide && <Dialog.Overlay className="assistant-scrim" />}
         <Dialog.Content id="assistant-drawer" className="assistant-drawer" data-assistant-drawer="true" lang={assistant.lang === 'zh' ? 'zh-CN' : 'en'} onInteractOutside={event => { if (wide) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
-          <header className="assistant-drawer-heading"><div><Dialog.Title><MessageCircle size={19} />{t('AI assistant', 'AI 助手')}</Dialog.Title><Dialog.Description>{t('Your recording, with context.', '带着记录和区间，继续提问。')}</Dialog.Description></div><div><a href={fullHref} aria-label={t('Open full AI workspace', '打开完整 AI 工作区')}><ArrowUpRight size={19} /></a><Dialog.Close aria-label={t('Close AI assistant', '关闭 AI 助手')}><X size={20} /></Dialog.Close></div></header>
-          <AssistantView mode="drawer" />
+          <header className="assistant-drawer-heading"><div><Dialog.Title><MessageCircle size={19} />{t('AI assistant', 'AI 助手')}</Dialog.Title><Dialog.Description>{assistant.target ? t('Discuss this recording and its evidence.', '带着这条记录和对应依据，继续讨论。') : t('Talk about sleep, routines and breathing.', '聊聊睡眠、作息和呼吸。')}</Dialog.Description></div><div><a href={fullHref} aria-label={t('Open full AI workspace', '打开完整 AI 工作区')}><ArrowUpRight size={19} /></a><Dialog.Close aria-label={t('Close AI assistant', '关闭 AI 助手')}><X size={20} /></Dialog.Close></div></header>
+          {assistant.target ? <><button className="assistant-text-action" onClick={() => assistant.clearRecord()}>{t('Back to sleep discussion', '返回普通睡眠讨论')}</button><AssistantView mode="drawer" /></> : <GeneralSleepChat mode="drawer" onAddRecord={() => { assistant.close(); window.location.assign('/assistant?mode=record'); }} />}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

@@ -50,15 +50,15 @@ describe('Mobile navigation preserves existing app destinations', () => {
     expect((route.mock.calls[0][0] as CustomEvent).detail).toEqual({ page: 'home' });
     window.removeEventListener('breathmap:tool-select', route);
   });
-  it('exposes the assistant in More with the selected recording and date without changing the bottom destinations', async () => {
+  it('opens general sleep chat in More without implicitly attaching a record', async () => {
     window.history.replaceState(null, '', '/analysis?recordId=synthetic-record&ctxDate=2026-10-28');
     await mount();
     await act(async () => container.querySelector<HTMLButtonElement>('nav > button')!.click());
     const assistant = document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/assistant"]')!;
     expect(assistant.textContent).toBe('AI assistant');
     const destination = new URL(assistant.href);
-    expect(destination.searchParams.get('recordId')).toBe('synthetic-record');
-    expect(destination.searchParams.get('ctxDate')).toBe('2026-10-28');
+    expect(destination.searchParams.get('recordId')).toBeNull();
+    expect(destination.searchParams.get('ctxDate')).toBeNull();
     expect([...container.querySelectorAll('nav > a')].map(a => a.textContent)).toEqual(['Home', 'Records', 'Diary', 'Learn']);
   });
   it('routes the assistant through the wellbeing leave guard rather than navigating directly', async () => {
@@ -67,7 +67,7 @@ describe('Mobile navigation preserves existing app destinations', () => {
     const route = vi.fn(); window.addEventListener('breathmap:tool-select', route);
     await act(async () => container.querySelector<HTMLButtonElement>('nav > button')!.click());
     const assistant = document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/assistant"]')!;
-    expect(new URL(assistant.href).searchParams.get('recordId')).toBe('synthetic-record');
+    expect(new URL(assistant.href).searchParams.get('recordId')).toBeNull();
     await act(async () => assistant.click());
     expect(route).toHaveBeenCalledOnce();
     expect((route.mock.calls[0][0] as CustomEvent).detail).toEqual({ page: 'assistant' });

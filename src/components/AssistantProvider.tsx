@@ -9,13 +9,14 @@ type AssistantState = Workspace & {
   open: boolean; lang: 'en' | 'zh';
   show: (target?: AssistantTarget) => void; close: () => void;
   selectRecord: (target: AssistantTarget) => void;
+  clearRecord: () => void;
   setConversation: (key: string, id: string) => void;
   saveDraft: (key: string, draft: Draft) => void;
   rememberJob: (job: AcceptedJob) => void; forgetJob: (id: string) => void;
 };
 const blank = (): Workspace => ({ conversations: {}, drafts: {}, acceptedJobs: {} });
 const readLanguage = () => { try { return localStorage.getItem('breathmap-language') === 'en' ? 'en' as const : 'zh' as const; } catch { return 'zh' as const; } };
-const Context = createContext<AssistantState>({ ...blank(), open: false, lang: 'zh', show: () => {}, close: () => {}, selectRecord: () => {}, setConversation: () => {}, saveDraft: () => {}, rememberJob: () => {}, forgetJob: () => {} });
+const Context = createContext<AssistantState>({ ...blank(), open: false, lang: 'zh', show: () => {}, close: () => {}, selectRecord: () => {}, clearRecord: () => {}, setConversation: () => {}, saveDraft: () => {}, rememberJob: () => {}, forgetJob: () => {} });
 const prefix = 'breathmap:assistant:v1:';
 
 function restore(userId?: string): Workspace {
@@ -42,11 +43,18 @@ function restore(userId?: string): Workspace {
   } catch { return blank(); }
 }
 
+function initialWorkspace(userId?: string): Workspace {
+  const saved = restore(userId), target = assistantTargetFromUrl();
+  if (!target) return saved;
+  const sameResult = saved.target?.recordingId === target.recordingId && (!target.resultHash || target.resultHash === saved.target.resultHash);
+  return { ...saved, target: sameResult ? { ...saved.target, ...target } : target };
+}
+
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const userId = user?.id;
   const [owner, setOwner] = useState(userId);
-  const [workspace, setWorkspace] = useState<Workspace>(() => ({ ...restore(userId), ...(assistantTargetFromUrl() ? { target: assistantTargetFromUrl() } : {}) }));
+  const [workspace, setWorkspace] = useState<Workspace>(() => initialWorkspace(userId));
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState(readLanguage);
   const ownerRef = useRef(userId);
@@ -61,7 +69,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loading) return;
     if (ownerRef.current && ownerRef.current !== userId) { try { sessionStorage.removeItem(prefix + ownerRef.current); } catch { /* Session-only memory remains isolated. */ } }
-    if (ownerRef.current !== userId) { ownerRef.current = userId; setOwner(userId); setWorkspace({ ...restore(userId), ...(userId && assistantTargetFromUrl() ? { target: assistantTargetFromUrl() } : {}) }); setOpen(false); }
+    if (ownerRef.current !== userId) { ownerRef.current = userId; setOwner(userId); setWorkspace(userId ? initialWorkspace(userId) : blank()); setOpen(false); }
   }, [userId, loading]);
   useEffect(() => {
     if (userId && userId === owner) { try { sessionStorage.setItem(prefix + userId, JSON.stringify({ owner: userId, ...workspace })); } catch { /* Drafts still survive closing the panel in this page. */ } }
@@ -81,7 +89,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const value: AssistantState = {
     ...(owner === userId ? workspace : blank()), open: owner === userId && !!userId && open, lang,
     selectRecord,
-    show: target => { if (!canWrite()) return; const next = target || assistantTargetFromUrl(); if (next && (target || next.recordingId !== workspace.target?.recordingId)) selectRecord(next); setOpen(true); },
+    clearRecord: () => updateWorkspace(current => ({ ...current, target: undefined })),
+    show: target => {
+      if (!canWrite()) return;
+      const path = window.location.pathname.replace(/\/$/, '') || '/';
+      const next = target || (['/analysis', '/report', '/assistant'].includes(path) ? assistantTargetFromUrl() : undefined);
+      if (next) { if (target || next.recordingId !== workspace.target?.recordingId) selectRecord(next); }
+      else updateWorkspace(current => ({ ...current, target: undefined }));
+      setOpen(true);
+    },
     close: () => { if (canWrite()) setOpen(false); },
     setConversation: (key, id) => updateWorkspace(current => ({ ...current, conversations: { ...current.conversations, [key]: id } })),
     saveDraft: (key, draft) => updateWorkspace(current => ({ ...current, drafts: { ...current.drafts, [key]: draft } })),

@@ -110,7 +110,7 @@ afterEach(async()=>{
 });
 
 describe('rendered wellbeing form persistence',()=>{
-  it('guards the assistant destination against unsaved changes and retains the owned recording context',async()=>{
+  it('guards general assistant navigation against unsaved changes and retains the date without attaching a recording',async()=>{
     await mount('diary',`&ctxRecord=${RECORD}`);
     await fill(input('Notes'),'Keep this diary draft.');
     vi.mocked(window.confirm).mockReturnValue(false);
@@ -123,7 +123,7 @@ describe('rendered wellbeing form persistence',()=>{
     expect(memory.navigate).toHaveBeenCalledOnce();
     const target=new URL(memory.navigate.mock.calls[0][0].destination,window.location.origin);
     expect(target.pathname).toBe('/assistant');
-    expect(target.searchParams.get('recordId')).toBe(RECORD);
+    expect(target.searchParams.get('recordId')).toBeNull();
     expect(target.searchParams.get('ctxDate')).toBe(today);
     expect(memory.writes).toEqual([]);
   });

@@ -397,9 +397,7 @@ function PrimaryNavigation({t,links}:any){
  const section=PAGE==="wellbeing"?toolSection:["recordings","upload","report","analysis","trash"].includes(PAGE)?"recordings":PAGE;
  const daily=(id:string)=>withQuery(links.wellbeing,{view:id,ctxDate:bmReadJourney().date});
  const recordingsLink=links.recordings;
- const assistantQuery=new URLSearchParams(window.location.search);
- const assistantRecord=assistantQuery.get("recordId")||assistantQuery.get("record")||assistantQuery.get("ctxRecord");
- const assistantLink=withQuery(links.assistant,{ctxDate:bmReadJourney().date,...(assistantRecord?{recordId:assistantRecord}:{})});
+ const assistantLink=links.assistant;
  const items=[
   {id:"home",en:"Home",zh:"个人首页",to:links.home,page:"home"},
   {id:"recordings",en:"Recordings",zh:"呼吸记录",to:recordingsLink,page:"recordings"},
@@ -1293,7 +1291,7 @@ function WellbeingPage({lang,t,email,profile,recordings,recordingsStatus,recordi
    if(!["home","recordings","upload","learn","assistant"].includes(page)||!links[page])return;
    if(writeLocks.current.size){setNotice(t("Wait for the current save to finish.","请等待当前保存完成。"));return;}
    if(unsaved.current&&!window.confirm(t("Leave your unsaved changes?","离开尚未保存的内容？")))return;
-   unsaved.current=false;navigateWellbeing(withQuery(links[page],{ctxDate:journey.date,...(page==="assistant"&&journey.recordingId?{recordId:journey.recordingId}:{})}));
+   unsaved.current=false;navigateWellbeing(withQuery(links[page],{ctxDate:journey.date}));
  };
  useEffect(()=>{const request=(event:Event)=>{const target=(event as CustomEvent).detail;if(target?.view&&WELLNESS_TABS.some(item=>item.id===target.view)){if(target.view!==view)choose(target.view,target.context);}else if(target?.page)leavePage(target.page);};window.addEventListener("breathmap:tool-select",request);window.dispatchEvent(new window.Event("breathmap:tool-route-changed"));return()=>window.removeEventListener("breathmap:tool-select",request);},[view,journey.date,journey.recordingId,email,recordings,lang]);
 

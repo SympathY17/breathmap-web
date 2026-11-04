@@ -330,9 +330,7 @@ function PrimaryNavigation({t,links}:any){
  const section=PAGE==="wellbeing"?toolSection:["recordings","upload","report","analysis","trash"].includes(PAGE)?"recordings":PAGE;
  const daily=(id:string)=>withQuery(links.wellbeing,{view:id,ctxDate:bmReadJourney().date});
  const recordingsLink=links.recordings;
- const assistantQuery=new URLSearchParams(window.location.search);
- const assistantRecord=assistantQuery.get("recordId")||assistantQuery.get("record")||assistantQuery.get("ctxRecord");
- const assistantLink=withQuery(links.assistant,{ctxDate:bmReadJourney().date,...(assistantRecord?{recordId:assistantRecord}:{})});
+ const assistantLink=links.assistant;
  const items=[
   {id:"home",en:"Home",zh:"个人首页",to:links.home,page:"home"},
   {id:"recordings",en:"Recordings",zh:"呼吸记录",to:recordingsLink,page:"recordings"},
@@ -563,6 +561,7 @@ export default function Block(){
         <h2>{t("Recording saved", "记录已保存")}</h2>
         <p>{t("Your file and recording details are saved. Open this recording and choose Start analysis. Results will appear after the analysis host finishes processing it.", "文件及采集信息已保存。打开这条记录后点击“开始分析”；分析主机处理完成后即可查看结果。")}</p>
         <div className="button-row">
+          {savedRecord.id && new URLSearchParams(window.location.search).get("returnTo")==="assistant" && <NavLink to={withQuery(links.assistant,{recordId:savedRecord.id})} className="btn">{t("Continue with AI assistant", "带着记录继续与 AI 讨论")}<ArrowRight size={18}/></NavLink>}
           {savedRecord.id && <NavLink to={links.report} record={savedRecord} className="btn">{t("View recording", "查看记录")}<ArrowRight size={18}/></NavLink>}
           <NavLink to={links.recordings} className="btn secondary">{t("Back to recordings", "返回呼吸记录")}</NavLink>
           <button type="button" className="text-button" disabled={busy||isUploading} onClick={() => {if(submitLock.current||busy||isUploading)return;selectionId.current++;selectedFile.current=null;checkedFile.current=null;uploadedFile.current=null;setSavedRecord(null);setFile(null);setFileCheckStatus("idle");setFileCheckSummary(null);setFileCheckError(null);setTitle("");setRecordedAt(localDate());setDetails("");setNotes("");resetMessages();}}>{t("Upload another", "继续上传")}</button>

@@ -35,6 +35,14 @@ On narrow screens, collapse record switching and data-use detail, keep messages,
 authorization and the composer in a non-overlapping scroll flow, and respect the
 bottom navigation and safe areas. Saved explanations remain readable offline.
 
+The global AI destination starts a general conversation about sleep, routines and
+breathing. Its input and conversation history are the main content; adding an
+existing recording or uploading one is an explicit secondary action. Record and
+waveform-specific entries retain their selected record and interval. A visible
+record discussion label and a return-to-general action distinguish the contexts.
+The AI page follows the same desktop/sidebar, tablet/top and phone/bottom
+navigation rules as the other pages; it has no second desktop navigation bar.
+
 ## Daily overview and analysis layout (2026-11-04)
 
 Home has one date control and one upload entry. The selected day's diary and
