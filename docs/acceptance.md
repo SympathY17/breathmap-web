@@ -182,6 +182,19 @@ Browser observations and screenshot: `browser-results.json` and
 worker remains running on the original configured computer at the user's request.
 Startup is still manual after shutdown/restart; see [worker instructions](../worker/README.md).
 
+## 2026-11-09 guest preview — pre-release verification
+
+Implemented a public synthetic preview, contextual login gates and validated
+post-login return paths. Personal pages and live AI do not mount for signed-out
+visitors. Existing server authentication, RLS and private Storage are unchanged.
+234 tests across 22 files, TypeScript and the build passed. Local browser checks
+covered 320–1440-pixel layouts, both languages, saved waveform citations and
+login gates. A disposable PostgreSQL probe verified 14 anonymous-access denials.
+The browser used a signed-out mock and did not test cloud login or send requests
+to the AI provider. These checks did not trigger a Netlify deployment; the user
+subsequently authorized a single consolidated production release.
+See [scope, evidence and release boundary](guest-preview-20261109.md).
+
 ## 2026-11-04 public authentication layout and signup diagnosis
 
 The reported `email rate limit exceeded` was confirmed in production Auth logs

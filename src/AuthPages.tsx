@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Activity, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { useAuth } from './lib/user';
+import { safeReturnTo } from './lib/auth-return';
 
 function authErrorMessage(issue: unknown, t: (en: string, zh: string) => string) {
   const code = issue && typeof issue === 'object' && 'code' in issue ? issue.code : undefined;
@@ -29,11 +30,12 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
   const [message, setMessage] = useState('');
   const [error, setError] = useState(notice);
   const signup = path === '/sign-up', forgot = path === '/forgot-password', reset = path === '/reset-password', account = path === '/account';
+  const returnTo = safeReturnTo(new URLSearchParams(window.location.search).get('returnTo'));
   useEffect(() => { localStorage.setItem('breathmap-language', lang); }, [lang]);
   useEffect(() => {
-    if (user && path === '/login') window.location.replace('/');
+    if (user && path === '/login') window.location.replace(returnTo);
     if (account && !user) window.location.replace('/login');
-  }, [path, user?.id]);
+  }, [path, user?.id, returnTo]);
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy || !supabase) return;
     setError(''); setMessage('');
@@ -59,7 +61,7 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
         setPassword(''); setConfirmation(''); setMessage(t('Your password has been updated.', '密码已更新。'));
       } else {
         const { error: issue } = await supabase.auth.signInWithPassword({ email: email.trim(), password }); if (issue) throw issue;
-        window.location.replace('/');
+        window.location.replace(returnTo);
       }
     } catch (issue) { setError(authErrorMessage(issue, t)); }
     finally { setBusy(false); }
@@ -79,7 +81,8 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
         {reset && !user && <a href="/forgot-password">{t('Request a new password reset link', '重新申请密码重置链接')}</a>}
         <button className="solid-button" disabled={busy}>{busy ? t('Please wait…', '请稍候…') : account ? t('Save name', '保存名称') : signup ? t('Create account', '创建账号') : forgot ? t('Send reset link', '发送重置链接') : reset ? t('Update password', '更新密码') : t('Sign in', '登录')}</button>
       </form>
-      {account ? <div className="auth-links"><a href="/">{t('Back to your overview', '返回个人首页')}</a><a href="/forgot-password">{t('Change password', '修改密码')}</a><button className="text-button" disabled={busy} onClick={async () => { if (!supabase) return; setBusy(true); const { error } = await supabase.auth.signOut(); if (error) { setError(error.message); setBusy(false); } else window.location.replace('/login'); }}>{t('Sign out', '退出登录')}</button></div> : <div className="auth-links">{!signup && !forgot && !reset && <><a href="/forgot-password">{t('Forgot password?', '忘记密码？')}</a><a href="/sign-up">{t('Create an account', '创建账号')}</a></>}{(signup || forgot || reset) && <a href="/login"><ArrowLeft size={14} /> {t('Back to sign in', '返回登录')}</a>}</div>}
+      {account ? <div className="auth-links"><a href="/">{t('Back to your overview', '返回个人首页')}</a><a href="/forgot-password">{t('Change password', '修改密码')}</a><button className="text-button" disabled={busy} onClick={async () => { if (!supabase) return; setBusy(true); const { error } = await supabase.auth.signOut(); if (error) { setError(error.message); setBusy(false); } else window.location.replace('/login'); }}>{t('Sign out', '退出登录')}</button></div> : <div className="auth-links">{!signup && !forgot && !reset && <><a href="/forgot-password">{t('Forgot password?', '忘记密码？')}</a><a href="/demo">{t('Explore as guest', '游客体验')}</a></>}{(signup || forgot || reset) && <a href="/login"><ArrowLeft size={14} /> {t('Back to sign in', '返回登录')}</a>}</div>}
+      {!account && !signup && !forgot && !reset && <p>{t('Registration is temporarily unavailable. You can explore as a guest or sign in with an existing account.', '注册暂未开放。你可以先以游客身份体验，或使用已有账号登录。')}</p>}
     </section>
     <footer className="auth-footer">{t('Your recordings support understanding and review. They do not replace clinical assessment.', '呼吸记录用于理解与回顾，不能代替临床评估。')}</footer>
   </main>;

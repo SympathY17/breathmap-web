@@ -8,10 +8,12 @@ import { AssistantProvider } from './components/AssistantProvider';
 import AssistantSurface from './components/AssistantSurface';
 import AssistantPage from './AssistantPage';
 import DesktopNavigation from './components/DesktopNavigation';
+import { safeReturnTo } from './lib/auth-return';
 import './app.css';
 import './workspace.css';
 
 const publicAuthPaths = ['/login', '/sign-up', '/forgot-password', '/reset-password'];
+const GuestExperience = lazy(() => import('./guest/GuestExperience'));
 const pages = {
   '/': lazy(() => import('./pages/home')),
   '/recordings': lazy(() => import('./pages/recordings')),
@@ -40,9 +42,23 @@ function Routes() {
   return <Suspense fallback={<main className="app-loading" role="status">Loading your workspace…</main>}><Page /></Suspense>;
 }
 function AppLayout() {
-  const { loading, user } = useAuth();
+  const { loading, user, error } = useAuth();
   const path = window.location.pathname.replace(/\/$/, '') || '/';
-  if (!isConfigured || loading || !user || publicAuthPaths.includes(path)) return <Routes />;
+  const guest = (initialLoginTarget?: string, initialView: 'overview' | 'learn' = 'overview') => (
+    <Suspense fallback={<main className="app-loading" role="status">Opening the BreathMap demo… / 正在打开演示…</main>}>
+      <GuestExperience initialLoginTarget={initialLoginTarget} initialView={initialView} signedIn={!!user} />
+    </Suspense>
+  );
+  // Public examples never mount private pages, authenticated navigation or live AI.
+  if (path === '/demo') return guest();
+  if (publicAuthPaths.includes(path) || loading || !user && error) return <Routes />;
+  if (!user) {
+    if (path === '/') return guest();
+    if (path === '/learn') return guest(undefined, 'learn');
+    if (path === '/assistant' || path === '/account' || path in pages) return guest(safeReturnTo(path + window.location.search));
+    return <main className="auth-shell"><section className="auth-card"><h1>Page not found / 页面不存在</h1><a href="/demo">Explore BreathMap / 游客体验</a></section></main>;
+  }
+  if (!isConfigured) return <Routes />;
   return <><div className="workspace-shell"><DesktopNavigation /><div className="workspace-content"><Routes /></div></div><MobileNavigation /><AssistantSurface /></>;
 }
 export default function App() { return <AuthProvider><AssistantProvider><AppLayout /></AssistantProvider></AuthProvider>; }
