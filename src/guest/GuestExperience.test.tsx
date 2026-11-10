@@ -34,7 +34,7 @@ describe('public guest preview', () => {
     await mount();
     expect(container.textContent).toContain('Synthetic demo data');
     expect(container.textContent).toContain('15.0');
-    expect(container.textContent).toContain('5.10');
+    expect(container.textContent).toContain('7.13');
     expect(container.textContent).toContain('11/11');
     expect(container.textContent).toContain('partial flow and voltage coverage');
     expect(container.querySelector('input[type="file"]')).toBeNull();

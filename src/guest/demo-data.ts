@@ -3,6 +3,7 @@
  * Contains no account identity, private file location, credentials, or runtime request code.
  * Source workbook/result hashes were checked before extraction. The saved English
  * interpretation is excerpted without rewriting; Chinese is its display translation.
+ * The expiratory-flow summary is a configured presentation example.
  */
 export type DemoText = { en: string; zh: string };
 export type GuestDemoPoint = { t: number; magnetic: number | null; flow: number | null; sig: number | null };
@@ -34,7 +35,7 @@ export const guestDemo: GuestDemo = {
   "durationSeconds": 60,
   "summary": {
     "breathingRate": 15.034902452120994,
-    "expiratoryFlow": 5.102936454665728,
+    "expiratoryFlow": 7.13,
     "validModelWindows": 11,
     "totalModelWindows": 11,
     "executionStatus": "partial",
@@ -939,8 +940,8 @@ export const guestDemo: GuestDemo = {
     "resultSha256": "9b7c5daa5e2185a3b6bed1b9cc3c9993a77da4fe3a5751680b682452a7e51273",
     "explanationSource": "saved",
     "note": {
-      "en": "Saved numerical results and AI interpretation from a synthetic recording. Values are rounded only for display. Chinese text translates the saved English excerpts. No new analysis or AI request is made in this preview.",
-      "zh": "来自合成记录的已保存数值结果和 AI 解读。数值仅为显示作取舍；中文为已保存英文节选的翻译。此预览不会发起新的分析或 AI 请求。"
+      "en": "Saved signals and AI interpretation from a synthetic recording. Mean estimated expiratory flow is set to 7.13 L/min for this demo; other numerical values come from the saved results and are rounded for display. Source hashes identify the original recording and results. Chinese text translates the saved English excerpts. No new analysis or AI request is made in this preview.",
+      "zh": "来自合成记录的已保存信号和 AI 解读。此演示将平均估计呼气流量设为 7.13 L/min；其他数值来自已保存结果，并按显示精度取舍。来源哈希对应原始记录和结果。中文为已保存英文节选的翻译。此预览不会发起新的分析或 AI 请求。"
     }
   }
 };
