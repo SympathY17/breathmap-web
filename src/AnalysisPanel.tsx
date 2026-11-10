@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeft, ArrowRight, MessageCircle, RefreshCw } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import { formatNumber as num, requestJob, resultIsCurrent, waveSegments, type Waveform } from './lib/analysis';
+import { formatNumber as num, requestJob, resultIsCurrent, type Waveform } from './lib/analysis';
 import { useAuth } from './lib/user';
 import { PrivateFileLink } from './components/private-file-link';
 import { useAssistant } from './components/AssistantProvider';
 import { assistantTargetFromUrl, validSelection, type AssistantSelection } from './lib/assistant-context';
+import WaveformExplorer, { type TimeRange } from './components/WaveformExplorer';
+import { buildCoverageNotice, buildIntervalInsight } from './lib/recording-insights';
 import './analysis-responsive.css';
 
 const LABELS: Record<string, [string, string]> = { normal: ['Normal breathing', '正常呼吸'], cont: ['Normal breathing', '正常呼吸'], continuous: ['Normal breathing', '正常呼吸'], no_inhale: ['Inspiratory interruption', '吸气中断'], no_exhale: ['Expiratory interruption', '呼气中断'], pause: ['No breathing', '无呼吸'], invalid: ['Unavailable', '不可用'], unknown: ['Uncertain', '不确定'], '正常呼吸': ['Normal breathing', '正常呼吸'], '呼吸暂停': ['No breathing', '无呼吸'], '呼吸障碍（未吸气）': ['Inspiratory interruption', '吸气中断'], '呼吸障碍（未呼气）': ['Expiratory interruption', '呼气中断'], '无法判断': ['Uncertain', '不确定'] };
@@ -13,53 +15,20 @@ function localRecordingTime(value: string) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
 }
-function WavePlot({ wave, column, title, unit }: { wave: Waveform; column: string; title: string; unit: string }) {
-  const segments = waveSegments(wave, column), all = segments.flat();
-  const plotRef = useRef<SVGSVGElement>(null);
-  const [plotWidth, setPlotWidth] = useState(1100);
-  const hasPoints = all.length > 0;
-  useEffect(() => {
-    const plot = plotRef.current;
-    if (!plot) return;
-    const resize = () => {
-      const width = plot.getBoundingClientRect().width;
-      if (width > 0) setPlotWidth(Math.max(200, Math.round(width)));
-    };
-    resize();
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', resize);
-      return () => window.removeEventListener('resize', resize);
-    }
-    const observer = new ResizeObserver(resize);
-    observer.observe(plot);
-    return () => observer.disconnect();
-  }, [hasPoints]);
-  if (!all.length) return <div><strong>{title}</strong><p className="result-note">—</p></div>;
-  const values = all.map(p => p[1]), min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
-  const a = wave.range.start_s, b = wave.range.end_s;
-  const left = 48, right = plotWidth - 18;
-  const xy = ([x, y]: [number, number]) => `${left + (x - a) / (b - a) * (right - left)},${135 - (y - min) / span * 110}`;
-  return <div className="wave-track"><strong>{title} <small>({unit})</small></strong><svg ref={plotRef} className="wave-plot" viewBox={`0 0 ${plotWidth} 170`} role="img" aria-label={`${title}, ${num(a)}–${num(b)} s`}>
-    <path d={`M${left} 18V140H${right}`} fill="none" stroke="#b8d4ca" />
-    {segments.map((segment, i) => segment.length === 1 ? <circle key={i} cx={Number(xy(segment[0]).split(',')[0])} cy={Number(xy(segment[0]).split(',')[1])} r={1.5} fill="#26796d" /> : <polyline key={i} points={segment.map(xy).join(' ')} fill="none" stroke={column === 'sig_input_uV' ? '#6595ae' : column === 'expiratory_flow_l_min' ? '#6c9784' : '#276c68'} strokeWidth="1.5" />)}
-    <text x="4" y="28" fontSize="11" fill="#5e7b70">{num(max)}</text><text x="4" y="137" fontSize="11" fill="#5e7b70">{num(min)}</text><text x={left} y="158" fontSize="11" fill="#5e7b70">{num(a)} s</text><text x={right} y="158" fontSize="11" textAnchor="end" fill="#5e7b70">{num(b)} s</text>
-  </svg></div>;
-}
+const sameRange = (left: TimeRange | null, right: TimeRange | null) => !!left && !!right && left.start_s === right.start_s && left.end_s === right.end_s;
 export default function AnalysisPanel({ recordingId, detailed }: { recordingId: string; detailed: boolean }) {
   const { user } = useAuth();
   const assistant = useAssistant();
-  const [lang, setLang] = useState(() => localStorage.getItem('breathmap-language') === 'en' ? 'en' : 'zh');
+  const [lang, setLang] = useState<'en' | 'zh'>(() => localStorage.getItem('breathmap-language') === 'en' ? 'en' : 'zh');
   const t = (en: string, zh: string) => lang === 'zh' ? zh : en;
-  const reasonText = (code: string) => ({
-    flow_partial_coverage: t('Flow estimates are unavailable at some time points.', '部分时间点没有可用的流量估计。'),
-    voltage_partial_coverage: t('The SIG voltage signal is unavailable at some aligned time points.', '部分对齐时间点没有可用的 SIG 电压信号。'),
-    frequency_unavailable: t('Breathing rate could not be calculated for this recording.', '本次记录无法计算呼吸频率。'),
-    flow_unavailable: t('Expiratory flow could not be calculated for this recording.', '本次记录无法计算呼气流量。'),
-  } as Record<string, string>)[code] ?? t('Some outputs need further review.', '部分结果需要进一步复核。');
   const [record, setRecord] = useState<any>(null), [result, setResult] = useState<any>(null), [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [heartbeat, setHeartbeat] = useState<string | null>(null);
   const [wave, setWave] = useState<Waveform | null>(null), [start, setStart] = useState('0'), [end, setEnd] = useState('30');
+  const [overviewWave, setOverviewWave] = useState<Waveform | null>(null);
+  const [viewRange, setViewRange] = useState<TimeRange>({ start_s: 0, end_s: 30 });
+  const [intervalSelection, setIntervalSelection] = useState<AssistantSelection | null>(null);
+  const [waveLoading, setWaveLoading] = useState(false), [waveIntentVersion, setWaveIntentVersion] = useState(0);
   const [kind, setKind] = useState<'model' | 'statistics' | 'attention'>('model'), [page, setPage] = useState(0), [selected, setSelected] = useState('');
   const [note, setNote] = useState(''), [saved, setSaved] = useState('');
   const [editingDetails, setEditingDetails] = useState(false), [savingDetails, setSavingDetails] = useState(false);
@@ -69,9 +38,12 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   const detailsDateOrigin = useRef({ stored: '', input: '' });
   const overviewHash = useRef(''), appliedWaveJob = useRef(''), rangeDraftDirty = useRef(false);
   const focusedRange = useRef<AssistantSelection | null>(null), urlFocus = useRef('');
-  const alive = useRef(true), previousResult = useRef<string | null>(null);
+  const desiredWaveRange = useRef<TimeRange | null>(null), requestedWaveKey = useRef('');
+  const waveRequestBusy = useRef(false), waveGeneration = useRef(0), initialWaveHash = useRef('');
+  const alive = useRef(true), previousResult = useRef<string | null>(null), refreshSequence = useRef(0);
   const refresh = useCallback(async () => {
     if (!supabase || !user) return;
+    const sequence = ++refreshSequence.current;
     const metadataVersion = detailsWriteVersion.current;
     const [r, a, j, h] = await Promise.all([
       supabase.from('recordings').select('id,user_id,title,notes,details,file_path,file_name,file_size,recorded_at,uploaded_at,trashed_at').eq('id', recordingId).is('trashed_at', null).maybeSingle(),
@@ -79,37 +51,76 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
       supabase.from('analysis_jobs').select('id,recording_id,operation,payload,status,result,error_code,created_at,finished_at').eq('recording_id', recordingId).order('created_at', { ascending: false }).limit(40),
       supabase.from('worker_heartbeat').select('last_seen').order('last_seen', { ascending: false }).limit(1),
     ]);
-    if (!alive.current) return;
+    if (!alive.current || sequence !== refreshSequence.current) return;
     const issue = r.error ?? a.error ?? j.error;
     if (issue) { setError(t('Your record could not be refreshed. Please try again.', '暂时无法刷新记录，请重试。')); setLoading(false); return; }
     if (metadataVersion === detailsWriteVersion.current) setRecord(r.data);
     setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
-    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) { setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; rangeDraftDirty.current = false; focusedRange.current = null; urlFocus.current = ''; }
+    if (previousResult.current && a.data?.result_sha256 !== previousResult.current) {
+      setWave(null); setOverviewWave(null); setPage(0); setSelected(''); setIntervalSelection(null); setWaveLoading(false);
+      setViewRange({ start_s: 0, end_s: 30 }); setStart('0'); setEnd('30');
+      overviewHash.current = ''; appliedWaveJob.current = ''; rangeDraftDirty.current = false; focusedRange.current = null; urlFocus.current = '';
+      desiredWaveRange.current = null; requestedWaveKey.current = ''; initialWaveHash.current = ''; waveRequestBusy.current = false; waveGeneration.current++;
+    }
     previousResult.current = a.data?.result_sha256 ?? null;
   }, [recordingId, user?.id, lang]);
   useEffect(() => { alive.current = true; void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => { alive.current = false; clearInterval(timer); }; }, [refresh]);
-  useEffect(() => { setWave(null); setPage(0); setSelected(''); overviewHash.current = ''; appliedWaveJob.current = ''; rangeDraftDirty.current = false; focusedRange.current = null; urlFocus.current = ''; }, [recordingId]);
+  useEffect(() => {
+    setWave(null); setOverviewWave(null); setPage(0); setSelected(''); setIntervalSelection(null); setWaveLoading(false);
+    setViewRange({ start_s: 0, end_s: 30 }); setStart('0'); setEnd('30');
+    overviewHash.current = ''; appliedWaveJob.current = ''; rangeDraftDirty.current = false; focusedRange.current = null; urlFocus.current = '';
+    desiredWaveRange.current = null; requestedWaveKey.current = ''; initialWaveHash.current = ''; waveRequestBusy.current = false; waveGeneration.current++;
+  }, [recordingId]);
   useEffect(() => { if (record) setNote(record.notes ?? ''); }, [record?.id, record?.notes]);
   useEffect(() => { localStorage.setItem('breathmap-language', lang); }, [lang]);
   const hash = result?.result_sha256;
   const display = resultIsCurrent(result?.display, hash) ? result.display : null;
+  const extentStart = Number.isFinite(display?.extent?.analysis_start_s) ? display.extent.analysis_start_s : 0;
+  const extentEnd = Number.isFinite(display?.extent?.analysis_end_s) ? display.extent.analysis_end_s : Number.isFinite(display?.extent?.duration_s) ? extentStart + display.extent.duration_s : 43200;
+  const bounds: TimeRange = { start_s: extentStart, end_s: Math.max(extentStart + .01, extentEnd) };
   useEffect(() => {
     const overview = result?.wave_manifest?.overview;
     if (!supabase || !hash || !resultIsCurrent(result?.wave_manifest, hash) || overviewHash.current === hash || !overview?.path || !user || !overview.path.startsWith(`${user.id}/${recordingId}/${hash}/`) || overview.bucket !== 'analysis-artifacts') return;
     overviewHash.current = hash; let cancelled = false;
     supabase.storage.from('analysis-artifacts').download(overview.path).then(async ({ data, error: issue }) => {
       if (issue || !data || data.size > 5 * 1024 * 1024 || cancelled) return;
-      try { const next = JSON.parse(await data.text()); if (!cancelled && !appliedWaveJob.current && next?.columns && next?.points) { setWave(next); if (!rangeDraftDirty.current && !focusedRange.current) { setStart(String(next.range.start_s)); setEnd(String(next.range.end_s)); } } } catch { /* Keep metrics available when the cached waveform cannot be read. */ }
+      try {
+        const next = JSON.parse(await data.text());
+        if (!cancelled && next?.columns && next?.points) {
+          setOverviewWave(next);
+          if (!appliedWaveJob.current) {
+            setWave(next);
+            if (!rangeDraftDirty.current && !focusedRange.current && !desiredWaveRange.current) {
+              const initial = { start_s: next.range.start_s, end_s: Math.min(next.range.end_s, next.range.start_s + 30) };
+              setViewRange(initial); setStart(String(initial.start_s)); setEnd(String(initial.end_s));
+            }
+          }
+        }
+      } catch { /* Keep metrics available when the cached waveform cannot be read. */ }
     });
     return () => { cancelled = true; };
   }, [hash, recordingId, user?.id, result?.wave_manifest?.overview?.path]);
   useEffect(() => {
-    const job = jobs.find(j => j.operation === 'waveform' && j.status === 'completed' && j.result?.waveform && j.result.result_sha256 === hash && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash && (!focusedRange.current || j.payload?.start === focusedRange.current.start_s && j.payload?.end === focusedRange.current.end_s));
-    if (job && appliedWaveJob.current !== job.id) {
-      appliedWaveJob.current = job.id; setWave(job.result.waveform);
+    if (!hash) return;
+    const current = jobs.filter(j => j.operation === 'waveform' && (j.payload?._result_sha256 ?? j.payload?.result_sha256) === hash);
+    if (!desiredWaveRange.current) {
+      const waiting = current.find(j => ['queued', 'running'].includes(j.status));
+      if (waiting && Number.isFinite(waiting.payload?.start) && Number.isFinite(waiting.payload?.end)) {
+        const target = { start_s: waiting.payload.start, end_s: waiting.payload.end };
+        desiredWaveRange.current = target; setViewRange(target); setWaveLoading(true);
+        if (!rangeDraftDirty.current) { setStart(String(target.start_s)); setEnd(String(target.end_s)); }
+      }
+    }
+    const job = current.find(j => j.status === 'completed' && j.result?.waveform && j.result.result_sha256 === hash && (!desiredWaveRange.current || sameRange(desiredWaveRange.current, { start_s: j.payload?.start, end_s: j.payload?.end })));
+    if (job) setWaveLoading(false);
+    if (job && (appliedWaveJob.current !== job.id || !sameRange(wave?.range ?? null, job.result.waveform.range))) {
+      const next = job.result.waveform as Waveform;
+      appliedWaveJob.current = job.id; setWave(next); setViewRange(next.range); setWaveLoading(false);
+      desiredWaveRange.current = next.range;
+      requestedWaveKey.current = `${hash}:${next.range.start_s}:${next.range.end_s}`;
       if (!rangeDraftDirty.current) { setStart(String(job.result.waveform.range.start_s)); setEnd(String(job.result.waveform.range.end_s)); }
     }
-  }, [jobs, hash]);
+  }, [jobs, hash, waveIntentVersion, wave]);
   async function submit(operation: 'analyse' | 'report' | 'chat' | 'waveform', payload: Record<string, unknown> = {}) {
     if (busy) return; setBusy(true); setError(''); setSaved('');
     try { await requestJob(recordingId, operation, { ...payload, language: lang, ...(hash ? { result_sha256: hash } : {}) }); await refresh(); }
@@ -122,9 +133,55 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   const summary = display?.summary;
   const usable = ['success', 'partial'].includes(execution);
   const report = display?.report;
+  const modelRows: any[] = resultIsCurrent(result?.windows?.model, hash) ? result.windows.model.items ?? [] : [];
+  const statisticsRows: any[] = resultIsCurrent(result?.windows?.statistics, hash) ? result.windows.statistics.items ?? [] : [];
+  const attentionRows: any[] = resultIsCurrent(result?.windows?.attention, hash) ? result.windows.attention.items ?? [] : [];
+  const coverageNotice = buildCoverageNotice(display, lang);
+  const intervalInsight = buildIntervalInsight({ selection: intervalSelection ?? viewRange, model: modelRows, statistics: statisticsRows }, lang);
+  const patternCounts: Record<string, number> = summary?.model_window_counts ?? {};
   const rows = resultIsCurrent(result?.windows?.[kind], hash) ? result.windows[kind].items ?? [] : [];
   const selectedRows = rows.slice(page * 20, page * 20 + 20);
   const label = (value: string) => { const pair = LABELS[value?.toLowerCase().replace(/[ -]/g, '_')]; return pair ? t(...pair) : value ?? '—'; };
+  function requestWaveRange(next: TimeRange) {
+    const checked = validSelection(next, bounds.end_s);
+    if (!checked || checked.start_s < bounds.start_s || !hash || !usable) {
+      setError(t('Choose a valid interval within this recording.', '请选择记录范围内的有效区间。')); return;
+    }
+    const target = { start_s: checked.start_s, end_s: checked.end_s };
+    rangeDraftDirty.current = false; desiredWaveRange.current = target;
+    setStart(String(target.start_s)); setEnd(String(target.end_s)); setViewRange(target); setError('');
+    if (overviewWave && sameRange(target, overviewWave.range)) {
+      setWave(overviewWave); setWaveLoading(false); requestedWaveKey.current = `${hash}:${target.start_s}:${target.end_s}`;
+    } else { setWaveLoading(true); requestedWaveKey.current = ''; }
+    setWaveIntentVersion(value => value + 1);
+  }
+  // Commit only the most recent gesture. While a read is pending, later drags
+  // replace the desired range locally; an old reply cannot move the view back.
+  useEffect(() => {
+    const target = desiredWaveRange.current;
+    if (!target || !hash || !usable || busy || waveRequestBusy.current) return;
+    if (overviewWave && sameRange(target, overviewWave.range)) return;
+    const current = jobs.filter(job => job.operation === 'waveform' && (job.payload?._result_sha256 ?? job.payload?.result_sha256) === hash);
+    if (current.some(job => job.status === 'completed' && job.result?.waveform && job.result?.result_sha256 === hash && sameRange(target, { start_s: job.payload?.start, end_s: job.payload?.end }))) return;
+    if (current.some(job => ['queued', 'running'].includes(job.status))) return;
+    const key = `${hash}:${target.start_s}:${target.end_s}`;
+    if (requestedWaveKey.current === key) {
+      if (current.some(job => ['failed', 'interrupted'].includes(job.status) && sameRange(target, { start_s: job.payload?.start, end_s: job.payload?.end }))) setWaveLoading(false);
+      return;
+    }
+    const generation = waveGeneration.current;
+    requestedWaveKey.current = key; waveRequestBusy.current = true; setWaveLoading(true);
+    void requestJob(recordingId, 'waveform', { start: target.start_s, end: target.end_s, max_points: 5000, language: lang, result_sha256: hash })
+      .then(() => { if (alive.current && waveGeneration.current === generation) return refresh(); })
+      .catch(issue => { if (alive.current && waveGeneration.current === generation && sameRange(desiredWaveRange.current,target)) { setError(issue instanceof Error ? issue.message : t('The interval could not be loaded. Try again.', '区间未能载入，请重试。')); setWaveLoading(false); } })
+      .finally(() => { if (alive.current && waveGeneration.current === generation) { waveRequestBusy.current = false; setWaveIntentVersion(value => value + 1); } });
+  }, [jobs, hash, usable, busy, waveIntentVersion, overviewWave, recordingId, lang, refresh]);
+  useEffect(() => {
+    if (!hash || !usable || !online || initialWaveHash.current === hash || rangeDraftDirty.current || focusedRange.current || desiredWaveRange.current) return;
+    if (jobs.some(job => job.operation === 'waveform' && (job.payload?._result_sha256 ?? job.payload?.result_sha256) === hash)) return;
+    initialWaveHash.current = hash;
+    requestWaveRange({ start_s: bounds.start_s, end_s: Math.min(bounds.end_s, bounds.start_s + 30) });
+  }, [hash, usable, online, jobs, bounds.start_s, bounds.end_s]);
   async function saveNotes() {
     if (!supabase || !user || busy) return;
     setBusy(true); setError(''); setSaved('');
@@ -167,8 +224,8 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     } finally { detailsLock.current = false; if (alive.current) setSavingDetails(false); }
   }
   function focusInterval(next: AssistantSelection, load = true) {
-    const selection = validSelection(next, display?.extent?.duration_s);
-    if (!selection || !hash) return;
+    const selection = validSelection(next, bounds.end_s);
+    if (!selection || selection.start_s < bounds.start_s || !hash) return;
     if (selection.window_id && selection.kind) {
       const collection = result?.windows?.[selection.kind];
       if (!resultIsCurrent(collection, hash)) return;
@@ -176,11 +233,20 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
       if (index < 0) return;
       setKind(selection.kind); setPage(Math.floor(index / 20)); setSelected(selection.window_id);
     } else setSelected('');
-    rangeDraftDirty.current = false; focusedRange.current = selection; setStart(String(selection.start_s)); setEnd(String(selection.end_s));
+    rangeDraftDirty.current = false; focusedRange.current = selection; setIntervalSelection(selection);
+    setStart(String(selection.start_s)); setEnd(String(selection.end_s)); setViewRange(selection);
     document.getElementById('waveforms')?.scrollIntoView({ behavior: 'auto', block: 'start' });
-    if (load) void submit('waveform', { start: selection.start_s, end: selection.end_s, max_points: 5000 });
+    if (load) requestWaveRange(selection);
   }
   function focusRow(row: any) { focusInterval({ start_s: row.start_s, end_s: row.end_s, window_id: row.window_id, kind }); }
+  function commitWaveRange(next: TimeRange, intent?: 'pan' | 'zoom' | 'select' | 'overview') {
+    if (intent === 'select') {
+      const selection = validSelection(next, bounds.end_s);
+      if (!selection || selection.start_s < bounds.start_s) return;
+      setSelected(''); setIntervalSelection(selection); focusedRange.current = selection;
+    }
+    requestWaveRange(next);
+  }
   useEffect(() => {
     const next = assistantTargetFromUrl();
     if (!next?.selection || next.recordingId !== recordingId || !hash || !usable) return;
@@ -208,7 +274,10 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     <nav className="result-assistant-tabs" aria-label={t('Recording workspace', '记录工作区')}><a href={`/analysis?recordId=${recordingId}`} aria-current={detailed ? 'page' : undefined}>{t('Data analysis', '数据分析')}</a><button type="button" onClick={() => askAssistant()}><MessageCircle size={17} />{t('AI explanation & chat', 'AI 解读与对话')}</button></nav>
     {error && <p role="alert" className="result-status error">{error}</p>}
     {pending.length > 0 && <div className="result-status" role="status">{pending.some(j => j.status === 'running') ? t('Your request is being processed.', '正在处理你的请求。') : online ? t('Your request is queued for the analysis host.', '请求已排队，等待分析主机处理。') : t('Your request has been saved. It will continue when the analysis host is available.', '请求已保存，将在分析主机可用后继续。')} {t('Saved results remain available.', '已有结果仍可查看。')}</div>}
-    {execution === 'partial' && <div className="result-status warn">{t('Analysis is available with some metrics limited. Missing values remain unavailable; this does not mean zero.', '分析结果可用，部分指标受限。缺失值保留为不可用，不等于零。')}<p className="result-note">{[...new Set((display.execution.partial_reasons ?? []).map(reasonText))].join(' ')}</p></div>}
+    {execution === 'partial' && <section className={`result-status ${coverageNotice.tone}`} aria-label={t('Analysis coverage', '分析覆盖情况')}>
+      <strong>{coverageNotice.title}</strong>
+      {coverageNotice.tone === 'warn' ? <ul className="coverage-details">{coverageNotice.details.map(detail => <li key={detail}>{detail}</li>)}</ul> : <details className="coverage-details"><summary>{t('View coverage and calculation boundaries', '查看覆盖时间和计算边界')}</summary><ul>{coverageNotice.details.map(detail => <li key={detail}>{detail}</li>)}</ul></details>}
+    </section>}
     {['error', 'unable_to_analyze'].includes(execution) && <div className="result-status error">{t('This recording could not be fully analysed. You can retry analysis using the original file.', '这条记录无法完成分析，可以使用原文件重试分析。')}</div>}
     <section className="result-grid" aria-label={t('Recording metrics', '记录指标')}>
       <div className="result-metric"><span>{t('Mean breathing rate', '平均呼吸频率')}</span><strong>{num(summary?.frequency_bpm)}</strong><small>{t('breaths/min', '次/分')}</small></div>
@@ -223,11 +292,26 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     {result && !usable && <div className="result-actions"><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'analyse')} onClick={() => void submit('analyse')}>{t('Retry analysis', '重试分析')}</button></div>}
     {usable && <>
       {!detailed && <div className="result-actions"><a className="solid-button" href={`/analysis?recordId=${recordingId}`}>{t('View detailed analysis', '查看详细分析')} <ArrowRight size={15} /></a></div>}
-      <section className="result-card" id="waveforms"><h2>{t('Synchronized waveforms', '同步波形')}</h2><p className="result-note">{t('Select an interval to inspect the saved signals. Changing the view does not recalculate your metrics.', '选择区间查看已保存信号。切换视图不会重新计算指标。')}</p>
-        <form className="wave-controls" onSubmit={event => { event.preventDefault(); const a = Number(start), b = Number(end); if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > (display?.extent?.analysis_end_s ?? display?.extent?.duration_s ?? 43200)) { setError(t('Choose a valid interval within this recording.', '请选择记录范围内的有效区间。')); return; } rangeDraftDirty.current = false; focusedRange.current = { start_s: a, end_s: b }; void submit('waveform', { start: a, end: b, max_points: 5000 }); }}>
-          <label>{t('Start (seconds)', '起点（秒）')}<input required type="number" min="0" step="0.01" value={start} onChange={e => { rangeDraftDirty.current = true; setStart(e.target.value); }} /></label><label>{t('End (seconds)', '终点（秒）')}<input required type="number" min="0" step="0.01" value={end} onChange={e => { rangeDraftDirty.current = true; setEnd(e.target.value); }} /></label><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'waveform')}>{t('Load interval', '载入区间')}</button><button type="button" className="assistant-secondary" disabled={!validSelection({ start_s: Number(start), end_s: Number(end) }, display?.extent?.duration_s)} onClick={() => askAssistant({ start_s: Number(start), end_s: Number(end) })}><MessageCircle size={16} />{t('Ask about this interval', '询问这段波形')}</button>
+      <section className="result-card recording-findings" aria-label={t('Recording findings', '记录结果概览')}>
+        <h2>{t('What the model found', '这次记录的模型结果')}</h2>
+        <p>{t('Review the window patterns below, then inspect their highlighted waveforms.', '先查看模型标记的模式，再结合高亮波形核对具体区间。')}</p>
+        <div className="pattern-counts">{Object.entries(patternCounts).filter(([,count]) => Number.isFinite(count) && count > 0).map(([pattern,count]) => {
+          const first = modelRows.find(row => row.label === pattern && row.valid !== false);
+          return <button type="button" key={pattern} disabled={!first} onClick={() => first && focusInterval({ start_s:first.start_s,end_s:first.end_s,window_id:first.window_id,kind:'model' })}><span>{label(pattern)}</span><strong>{num(count,0)}</strong><small>{t('windows', '个窗口')}</small></button>;
+        })}</div>
+        {attentionRows.length > 0 && <button type="button" className="text-button" onClick={() => focusInterval({ start_s:attentionRows[0].start_s,end_s:attentionRows[0].end_s,window_id:attentionRows[0].window_id,kind:'attention' })}>{t('Inspect the first flagged window', '查看首个关注窗口')} <ArrowRight size={15}/></button>}
+        <p className="result-note">{t('Windows can overlap. These are model classifications, not a count of separate events.', '窗口可能重叠；这里展示模型分类窗口数，不是独立事件次数。')}</p>
+      </section>
+      <section className="result-card" id="waveforms"><h2>{t('Synchronized waveforms', '同步波形')}</h2><p className="result-note">{t('Zoom or drag to inspect saved signals. All three tracks share one time range.', '缩放或拖动查看已保存信号，三条波形始终使用同一时间范围。')}</p>
+        <form className="wave-controls" onSubmit={event => { event.preventDefault(); focusInterval({ start_s: Number(start), end_s: Number(end) }); }}>
+          <label>{t('Start (seconds)', '起点（秒）')}<input required type="number" min={bounds.start_s} max={bounds.end_s} step="0.01" value={start} onChange={e => { rangeDraftDirty.current = true; setStart(e.target.value); }} /></label><label>{t('End (seconds)', '终点（秒）')}<input required type="number" min={bounds.start_s} max={bounds.end_s} step="0.01" value={end} onChange={e => { rangeDraftDirty.current = true; setEnd(e.target.value); }} /></label><button className="solid-button" disabled={busy}>{t('Load interval', '载入区间')}</button><button type="button" className="assistant-secondary" disabled={!validSelection({ start_s: Number(start), end_s: Number(end) }, bounds.end_s)} onClick={() => askAssistant(!rangeDraftDirty.current && intervalSelection ? intervalSelection : { start_s: Number(start), end_s: Number(end) })}><MessageCircle size={16} />{t('Ask about this interval', '询问这段波形')}</button>
         </form>
-        {wave ? <div style={{ marginTop: 24 }}><WavePlot wave={wave} column="signal_mT" title={t('Magnetic signal', '磁场信号')} unit="mT" /><WavePlot wave={wave} column="expiratory_flow_l_min" title={t('Estimated expiratory flow', '估计呼气流量')} unit="L/min" /><WavePlot wave={wave} column="sig_input_uV" title={t('SIG differential voltage', 'SIG 差分电压')} unit="μV" /><p className="wave-caption">{t('Actual sampled source rows; gaps and invalid points are not joined or interpolated.', '显示实际抽取的源数据点；缺口和无效点不连线、不插值。')} {wave.sampling && `${num(wave.sampling.returned_points, 0)} / ${num(wave.sampling.source_rows_in_range, 0)} ${t('source rows', '源数据行')}`}</p></div> : <p className="result-note">{t('The saved waveform is loading, or select an interval to request it from the analysis host.', '正在读取已保存波形，也可选择区间向分析主机请求。')}</p>}
+        <section className="interval-insight" aria-label={t('Selected interval results', '所选区间结果')} aria-live="polite">
+          <div className="interval-insight-heading"><h3>{intervalInsight.title}</h3>{intervalSelection && !sameRange(intervalSelection,viewRange) && <button type="button" onClick={() => requestWaveRange(intervalSelection)}>{t('Return to the selected interval', '回到所选区间')}</button>}</div>
+          {intervalInsight.highlights.map(detail => <p key={detail}>{detail}</p>)}
+          <details><summary>{t('Window and metric details', '窗口与指标说明')}</summary>{intervalInsight.details.map(detail => <p className="result-note" key={detail}>{detail}</p>)}</details>
+        </section>
+        {wave || overviewWave ? <WaveformExplorer wave={wave} overview={overviewWave} bounds={bounds} range={viewRange} selection={intervalSelection} lang={lang} loading={waveLoading} onRangeCommit={commitWaveRange}/> : <p className="result-note">{t('The saved waveform is loading, or select an interval to request it from the analysis host.', '正在读取已保存波形，也可选择区间向分析主机请求。')}</p>}
       </section>
       {detailed && <section className="result-card" id="analysis-windows"><h2>{t('Analysis windows', '分析窗口')}</h2><div className="result-tabs" role="tablist" aria-label={t('Window collections', '窗口分类')}>{(['model', 'statistics', 'attention'] as const).map(key => <button role="tab" aria-selected={kind === key} aria-controls="analysis-window-table" id={`window-tab-${key}`} className="result-tab" key={key} onClick={() => { setKind(key); setPage(0); }}>{key === 'model' ? t('Model', '模型') : key === 'statistics' ? t('Statistics', '统计') : t('Attention', '关注')}</button>)}</div>
         <div className="result-table-wrap" id="analysis-window-table" role="tabpanel" aria-labelledby={`window-tab-${kind}`}><table className="result-table" role="table" aria-label={t('Saved analysis windows', '已保存的分析窗口')}><thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">ID</th><th role="columnheader" scope="col">{t('Interval (s)', '区间（秒）')}</th>{kind === 'statistics' ? <><th role="columnheader" scope="col">{t('Rate (breaths/min)', '频率（次/分）')}</th><th role="columnheader" scope="col">{t('Flow (L/min)', '流量（L/min）')}</th></> : <><th role="columnheader" scope="col">{t('Pattern', '模式')}</th><th role="columnheader" scope="col">{t('Model score', '模型分数')}</th></>}<th role="columnheader" scope="col">{t('Waveform', '波形')}</th></tr></thead><tbody role="rowgroup">{selectedRows.map((row: any) => <tr role="row" key={row.window_id} aria-selected={selected === row.window_id}><td role="cell" data-label="ID">{row.window_id}</td><td role="cell" data-label={t('Interval (s)', '区间（秒）')}>{num(row.start_s)}–{num(row.end_s)}</td>{kind === 'statistics' ? <><td role="cell" data-label={t('Rate (breaths/min)', '频率（次/分）')}>{num(row.frequency_bpm)}</td><td role="cell" data-label={t('Flow (L/min)', '流量（L/min）')}>{num(row.mean_expiratory_flow_l_min)}</td></> : <><td role="cell" data-label={t('Pattern', '模式')}>{label(row.label)}</td><td role="cell" data-label={t('Model score', '模型分数')}>{num(row.top_score, 3)}</td></>}<td role="cell" data-label={t('Waveform', '波形')}><button onClick={() => focusRow(row)}>{t('Select interval', '选择区间')}</button></td></tr>)}</tbody></table></div>

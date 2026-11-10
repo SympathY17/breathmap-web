@@ -121,7 +121,7 @@ describe('AnalysisPanel saved-result version boundaries', () => {
   it('loads a selected window immediately and clears the old interval when a new result SHA arrives', async () => {
     mocked.result.display.report = { status: 'ready', source: 'simulated', claims: [{ text: 'Old synthetic explanation', evidence_ids: ['QA-OLD'], values: [] }], evidence: { 'QA-OLD': { values: { proof: 'OLD-SOURCE-ONLY' } } } };
     await mount();
-    expect(plots()).toContain('Magnetic signal, 0–60 s');
+    expect(plots()).toContain('Magnetic signal, 0–30 s');
     mocked.requestJob.mockImplementation(async (_id, operation, payload) => {
       expect(operation).toBe('waveform');
       expect(payload).toMatchObject({ start: 10, end: 15, result_sha256: hashA });
@@ -132,14 +132,14 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     expect(plots()).toContain('Magnetic signal, 10–15 s');
     expect(mocked.requestJob).toHaveBeenCalledTimes(1);
     await click(button('Ask about this interval'));
-    expect(mocked.showAssistant).toHaveBeenCalledWith({ recordingId: recordId, resultHash: hashA, selection: { start_s: 10, end_s: 15 } });
+    expect(mocked.showAssistant).toHaveBeenCalledWith({ recordingId: recordId, resultHash: hashA, selection: { start_s: 10, end_s: 15, window_id: 'OLD-06', kind: 'model' } });
     await click(button('Next'));
     expect(container.querySelector('tbody')?.textContent).toContain('OLD-21');
 
     mocked.result = resultFixture(hashB, 25, 90, 'NEW');
     // Retaining the old completed job in history must not block a new overview.
     await tick();
-    expect(plots()).toContain('Magnetic signal, 0–90 s');
+    expect(plots()).toContain('Magnetic signal, 0–30 s');
     expect(plots()).not.toContain('Magnetic signal, 10–15 s');
     expect(container.textContent).not.toContain('OLD-SOURCE-ONLY');
     expect(container.querySelector('tbody')?.textContent).toContain('NEW-01');
@@ -169,7 +169,7 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     expect(container.textContent).toContain('Your request has been saved. It will continue when the analysis host is available.');
     expect(container.textContent).toContain('Saved numerical results are retained.');
     expect(container.querySelectorAll('tbody tr')).toHaveLength(20);
-    expect(plots()).toContain('Magnetic signal, 0–60 s');
+    expect(plots()).toContain('Magnetic signal, 0–30 s');
     expect(button('Open AI assistant')).toBeTruthy();
     expect(mocked.requestJob).not.toHaveBeenCalled();
   });
@@ -181,5 +181,117 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     await act(async () => { dispatch(recordId, hashA); });
     expect(mocked.requestJob).toHaveBeenCalledWith(recordId, 'waveform', expect.objectContaining({ start: 10, end: 15, result_sha256: hashA }));
     expect(container.querySelector('tr[aria-selected="true"]')?.textContent).toContain('OLD-06');
+  });
+  it('opens a long record at 30 seconds and requests those details only once while the host is online', async () => {
+    mocked.result = resultFixture(hashA,25,3600);
+    mocked.heartbeat = [{last_seen:new Date().toISOString()}];
+    mocked.requestJob.mockImplementation(async (_id, operation, payload) => {
+      mocked.jobs = [{id:'initial-details',operation,status:'queued',payload:{...payload,_result_sha256:hashA}}];
+      return {id:'initial-details'};
+    });
+    await mount();
+    expect(rangeInputs().map(input=>input.value)).toEqual(['0','30']);
+    expect(plots()).toContain('Magnetic signal, 0–30 s');
+    expect(mocked.requestJob).toHaveBeenCalledWith(recordId,'waveform',expect.objectContaining({start:0,end:30}));
+    await tick();
+    expect(mocked.requestJob).toHaveBeenCalledTimes(1);
+  });
+  it('coalesces changes made during a pending read and never applies an older interval reply', async () => {
+    const oldJob = {id:'saved',operation:'waveform',status:'completed',payload:{_result_sha256:hashA,start:10,end:20},result:{result_sha256:hashA,waveform:waveform(10,20)}};
+    mocked.jobs = [oldJob];
+    mocked.requestJob.mockImplementation(async (_id, operation, payload) => {
+      const job={id:`read-${payload.start}`,operation,status:'queued',payload:{...payload,_result_sha256:hashA}};
+      mocked.jobs=[job,...mocked.jobs];
+      return {id:job.id};
+    });
+    await mount();
+    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
+    await click(container.querySelectorAll('tbody tr')[6].querySelector('button')!);
+    expect(mocked.requestJob).toHaveBeenCalledTimes(1);
+    expect(rangeInputs().map(input=>input.value)).toEqual(['12','17']);
+    mocked.jobs=[{...mocked.jobs[0],status:'completed',result:{result_sha256:hashA,waveform:waveform(10,15)}},oldJob];
+    await tick();
+    expect(mocked.requestJob).toHaveBeenCalledTimes(2);
+    expect(mocked.requestJob).toHaveBeenLastCalledWith(recordId,'waveform',expect.objectContaining({start:12,end:17}));
+    expect(plots()).toContain('Magnetic signal, 12–17 s');
+    expect(plots()).not.toContain('Magnetic signal, 10–15 s');
+    mocked.jobs=[{...mocked.jobs[0],status:'completed',result:{result_sha256:hashA,waveform:waveform(12,17)}},...mocked.jobs.slice(1)];
+    await tick();
+    expect(plots()).toContain('Magnetic signal, 12–17 s');
+    expect(mocked.requestJob).toHaveBeenCalledTimes(2);
+  });
+  it('keeps the selected model interval highlighted when zooming out for context', async () => {
+    mocked.requestJob.mockImplementation(async (_id,operation,payload)=>{
+      const id=`range-${payload.start}-${payload.end}`;
+      mocked.jobs=[{id,operation,status:'completed',payload:{...payload,_result_sha256:hashA},result:{result_sha256:hashA,waveform:waveform(payload.start,payload.end)}},...mocked.jobs];
+      return {id};
+    });
+    await mount();
+    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="Zoom out"]')!);
+    expect(plots()).toContain('Magnetic signal, 7.5–17.5 s');
+    expect(container.querySelectorAll('.wfe-highlight')).toHaveLength(3);
+    expect(container.querySelector('.interval-insight h3')?.textContent).toContain('10–15');
+    await click(button('Ask about this interval'));
+    expect(mocked.showAssistant).toHaveBeenCalledWith({recordingId:recordId,resultHash:hashA,selection:{start_s:10,end_s:15,window_id:'OLD-06',kind:'model'}});
+  });
+  it('explains known calculation boundaries without displaying the generic warning', async () => {
+    mocked.result.display.extent={duration_s:3600,analysis_start_s:0,analysis_end_s:3600};
+    mocked.result.display.execution.partial_reasons=['flow_partial_coverage','voltage_partial_coverage'];
+    Object.assign(mocked.result.display.summary,{flow_valid_s:3594.72,flow_coverage_fraction:3594.72/3600});
+    mocked.result.display.quality={bad_input_rows:0,invalid_sample_s:0,model_rejected_windows:0,flow:{phase_seconds:{'-1':1377.46,'0':0,'1':2217.26,'3':0,'8':.28,'9':5}},voltage:{aligned_coverage_fraction:359999/360000}};
+    await mount();
+    expect(container.querySelector('.result-status.info')).not.toBeNull();
+    expect(container.querySelector('.result-status.warn')).toBeNull();
+    expect(container.textContent).toContain('5.28');
+    expect(container.textContent).toContain('0.01');
+  });
+  it('restores a cached detail after returning to the overview without creating another job', async () => {
+    mocked.jobs=[{id:'cached',operation:'waveform',status:'completed',payload:{_result_sha256:hashA,start:10,end:15},result:{result_sha256:hashA,waveform:waveform(10,15)}}];
+    await mount();
+    expect(plots()).toContain('Magnetic signal, 10–15 s');
+    await click(button('Full recording'));
+    expect(plots()).toContain('Magnetic signal, 0–60 s');
+    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
+    expect(plots()).toContain('Magnetic signal, 10–15 s');
+    expect(container.querySelector('.wfe-loading')).toBeNull();
+    expect(mocked.requestJob).not.toHaveBeenCalled();
+  });
+  it('does not show a failed old range request after the user has selected a newer interval', async () => {
+    let failOld!: (reason:Error)=>void;
+    mocked.requestJob.mockImplementation(async (_id,operation,payload)=>{
+      mocked.jobs=[{id:'new-range',operation,status:'completed',payload:{...payload,_result_sha256:hashA},result:{result_sha256:hashA,waveform:waveform(payload.start,payload.end)}}];
+      return {id:'new-range'};
+    });
+    // Keep the first call unresolved while selecting the newer window.
+    mocked.requestJob.mockImplementationOnce(()=>new Promise((_resolve,reject)=>{failOld=reject;}));
+    await mount();
+    await click(container.querySelectorAll('tbody tr')[5].querySelector('button')!);
+    await click(container.querySelectorAll('tbody tr')[6].querySelector('button')!);
+    await act(async()=>{failOld(new Error('stale-range-error'));});
+    expect(container.textContent).not.toContain('stale-range-error');
+    expect(plots()).toContain('Magnetic signal, 12–17 s');
+    expect(mocked.requestJob).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.wfe-loading')).toBeNull();
+  });
+  it('does not let a slower refresh restore an older result SHA', async () => {
+    await mount();
+    const originalFrom=mocked.from.getMockImplementation()!;
+    let resolveOld!:(value:any)=>void;
+    let delay=true;
+    const oldResult=mocked.result;
+    mocked.from.mockImplementation((table:string)=>{
+      const query=originalFrom(table);
+      if(table==='analysis_results'&&delay)query.maybeSingle=()=>new Promise(resolve=>{resolveOld=resolve;});
+      return query;
+    });
+    await click(button('Refresh'));
+    delay=false;
+    mocked.result=resultFixture(hashB,25,90,'NEW');
+    await click(button('Refresh'));
+    expect(container.querySelector('tbody')?.textContent).toContain('NEW-01');
+    await act(async()=>{resolveOld({data:oldResult,error:null});});
+    expect(container.querySelector('tbody')?.textContent).toContain('NEW-01');
+    expect(container.querySelector('tbody')?.textContent).not.toContain('OLD-01');
   });
 });

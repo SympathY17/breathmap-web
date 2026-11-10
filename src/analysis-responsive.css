@@ -90,6 +90,22 @@ main.result-shell {
 .result-shell .wave-track > strong { display: block; font-size: .8125rem; line-height: 1.6; }
 .result-shell .wave-plot { height: 170px; width: 100%; max-width: 100%; }
 .result-shell #waveforms { scroll-margin-block-start: 1rem; }
+.result-shell .result-status.info { background: #edf7f4; border-color: #6c9784; color: #193d38; }
+.result-shell .coverage-details { margin: .6rem 0 0; font-size: .875rem; line-height: 1.7; }
+.result-shell .coverage-details summary { cursor: pointer; min-height: 2rem; }
+.result-shell .coverage-details ul { padding-left: 1.25rem; }
+.result-shell .pattern-counts { display: flex; flex-wrap: wrap; gap: .625rem; margin-block: 1rem; }
+.result-shell .pattern-counts button { display: flex; align-items: center; gap: .5rem; padding: .65rem .85rem; border: 1px solid var(--line, #b8d4ca); border-radius: .5rem; background: #f7fbf9; font-size: .8125rem; min-height: 44px; color: inherit; }
+.result-shell .pattern-counts button:not(:disabled):hover { background: #d9ede6; }
+.result-shell .pattern-counts strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.result-shell .pattern-counts small { color: #5c7771; }
+.result-shell .interval-insight { margin-top: 1rem; padding: .875rem 1rem; background: #edf7f4; border-left: 3px solid #26796d; line-height: 1.7; }
+.result-shell .interval-insight-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.result-shell .interval-insight h3 { margin: 0; font-size: 1rem; }
+.result-shell .interval-insight p { margin: .5rem 0; font-size: .875rem; }
+.result-shell .interval-insight summary { font-size: .8125rem; cursor: pointer; padding-top: .25rem; }
+.result-shell .interval-insight-heading button { font-size: .8125rem; min-height: 44px; text-decoration: underline; }
+.result-shell .pattern-counts button:focus-visible, .result-shell .interval-insight button:focus-visible, .result-shell .coverage-details summary:focus-visible { outline: 2px solid #26796d; outline-offset: 3px; }
 .result-shell .result-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
