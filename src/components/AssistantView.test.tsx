@@ -53,7 +53,6 @@ async function fill(value: string) { await act(async () => {
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(question(), value);
   question().dispatchEvent(new Event('input', { bubbles: true }));
 }); }
-async function consent() { await click(container.querySelector<HTMLInputElement>('input[type=checkbox]')!); }
 async function submitTwice() { await act(async () => { const form = container.querySelector('form')!; form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }); }
 
 beforeEach(() => {
@@ -70,14 +69,27 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
 
 describe('AI assistant workspace behaviour', () => {
-  it('reads a saved explanation without generating a new paid request', async () => {
+  it.each([
+    { action: 'Generate with DeepSeek', hasSavedReport: false },
+    { action: 'Regenerate with DeepSeek', hasSavedReport: true },
+  ])('requests an AI explanation only after clicking $action', async ({ action, hasSavedReport }) => {
+    if (!hasSavedReport) delete fake.data[`${userA}:${recordA}`].result.display.report;
     await mount(); await click(button('AI explanation'));
-    expect(container.textContent).toContain('Saved synthetic explanation.');
+    if (hasSavedReport) {
+      expect(container.textContent).toContain('Saved synthetic explanation.');
+      await click(container.querySelector('.assistant-report summary')!);
+    }
+    expect(container.querySelector('input[type=checkbox]')).toBeNull();
     expect(fake.requestJob).not.toHaveBeenCalled();
-    expect(button('Regenerate explanation').disabled).toBe(true);
+    expect(button(action).disabled).toBe(false);
+    await click(button(action));
+    expect(fake.requestJob).toHaveBeenCalledExactlyOnceWith(recordA, 'report', { language: 'en', result_sha256: hashA, ai_consent: true });
   });
   it('sends the chosen record, interval and previous job, without browser-supplied answer history', async () => {
-    await mount(); await consent(); await fill('Why did that interval change?'); await submitTwice();
+    await mount(); await fill('Why did that interval change?');
+    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+    expect(fake.requestJob).not.toHaveBeenCalled();
+    await click(button('Send to DeepSeek'));
     expect(fake.requestJob).toHaveBeenCalledOnce();
     expect(fake.requestJob).toHaveBeenCalledWith(recordA, 'chat', {
       language: 'en', result_sha256: hashA, ai_consent: true, question: 'Why did that interval change?',
@@ -88,23 +100,22 @@ describe('AI assistant workspace behaviour', () => {
     expect(question().value).toBe('');
   });
   it('retains an accepted chat lock before the next polling snapshot and after reopening the view', async () => {
-    await mount(); await consent(); await fill('A first question'); await submitTwice();
+    await mount(); await fill('A first question'); await submitTwice();
     expect(button('Waiting for answer').disabled).toBe(true);
     await fill('Do not submit this twice'); await submitTwice();
     expect(fake.requestJob).toHaveBeenCalledOnce();
     await act(async () => root.unmount()); root = createRoot(container); await mount();
-    await consent();
     expect(button('Waiting for answer').disabled).toBe(true);
     await submitTwice(); expect(fake.requestJob).toHaveBeenCalledOnce();
     fake.data[`${userA}:${recordA}`].jobs = [completedJob({ id: acceptedId }), completedJob()];
     await mount();
     expect(live.acceptedJobs[acceptedId]).toBeUndefined();
-    expect(button('Send').disabled).toBe(false);
+    expect(button('Send to DeepSeek').disabled).toBe(false);
   });
   it('blocks duplicate submits during an unresolved request and keeps the draft after failure', async () => {
     let reject!: (reason: Error) => void;
     fake.requestJob.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
-    await mount(); await consent(); await fill('Keep my unfinished question'); await submitTwice();
+    await mount(); await fill('Keep my unfinished question'); await submitTwice();
     expect(fake.requestJob).toHaveBeenCalledOnce(); expect(question().disabled).toBe(true);
     await act(async () => reject(new Error('Synthetic unavailable transport')));
     expect(question().value).toBe('Keep my unfinished question');
@@ -113,7 +124,7 @@ describe('AI assistant workspace behaviour', () => {
   it('does not reintroduce account A text when a delayed failed request settles after account B signs in', async () => {
     let reject!: (reason: Error) => void;
     fake.requestJob.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
-    await mount(); await consent(); await fill('A private delayed question'); await submitTwice();
+    await mount(); await fill('A private delayed question'); await submitTwice();
     fake.auth = { user: { id: userB }, loading: false }; fake.choices = [];
     window.history.replaceState(null, '', '/assistant'); await mount();
     await act(async () => reject(new Error('Synthetic late rejection')));
@@ -127,32 +138,31 @@ describe('AI assistant workspace behaviour', () => {
     ['offline', () => { const seen = new Date(Date.now() - 100000).toISOString(); return { last_seen: seen, assistant_protocol: 1, assistant_seen_at: seen }; }],
   ])('keeps saved content readable but blocks context-aware sending when %s', async (_name, heartbeat) => {
     fake.data[`${userA}:${recordA}`].heartbeat = heartbeat();
-    await mount(); await consent(); await fill('A question that must wait');
+    await mount(); await fill('A question that must wait');
     expect(container.textContent).toContain('Previous saved synthetic answer.');
-    expect(button('Send').disabled).toBe(true); await submitTwice(); expect(fake.requestJob).not.toHaveBeenCalled();
+    expect(button('Send to DeepSeek').disabled).toBe(true); await submitTwice(); expect(fake.requestJob).not.toHaveBeenCalled();
     await click(button('AI explanation')); expect(container.textContent).toContain('Saved synthetic explanation.');
   });
-  it('revokes consent and clears the old interval when the analysis version changes', async () => {
-    await mount(); await consent(); await fill('Question for the old result');
-    expect(container.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(true);
+  it('clears the old interval and draft when the analysis version changes', async () => {
+    await mount(); await fill('Question for the old result');
     fake.data[`${userA}:${recordA}`].result = result(hashB);
     fake.data[`${userA}:${recordA}`].jobs = [];
     await mount();
     expect(live.target).toEqual({ recordingId: recordA, resultHash: hashB });
     expect(container.querySelector('.assistant-selection')).toBeNull();
-    expect(container.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false);
     expect(question().value).toBe('');
     expect(container.textContent).not.toContain('Previous saved synthetic answer.');
+    expect(fake.requestJob).not.toHaveBeenCalled();
   });
-  it('changes records without carrying the previous record draft, consent or answer', async () => {
-    await mount(); await consent(); await fill('A-only draft');
+  it('changes records without carrying the previous record draft or answer', async () => {
+    await mount(); await fill('A-only draft');
     const picker = container.querySelector<HTMLSelectElement>('#assistant-record-page')!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(picker, recordB); picker.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(container.querySelector('.assistant-context-bar strong')?.textContent).toBe('Synthetic B recording');
     expect(question().value).toBe('');
-    expect(container.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false);
     expect(container.textContent).not.toContain('Previous saved synthetic answer.');
     expect(live.target?.selection).toBeUndefined();
+    expect(fake.requestJob).not.toHaveBeenCalled();
   });
   it('focuses a cited interval on the current analysis page and makes a versioned URL elsewhere', async () => {
     window.history.replaceState(null, '', `/analysis?recordId=${recordA}`);
@@ -185,7 +195,7 @@ describe('AI assistant workspace behaviour', () => {
     ['protocol', { version: 2, conversation_id: conversation, selection }],
   ])('does not treat an answer with a mismatched %s receipt as verified follow-up context', async (_name, receipt) => {
     fake.data[`${userA}:${recordA}`].jobs = [completedJob({ result: { result_sha256: hashA, assistant_context: receipt, answer: { claims: [{ text: 'Saved response with an unconfirmed receipt.', evidence_ids: [] }] } } })];
-    await mount(); await consent();
+    await mount();
     expect(container.textContent).toContain('Saved response with an unconfirmed receipt.');
     expect(container.textContent).toContain('no confirmed shared context');
     expect(question().disabled).toBe(true); await submitTwice(); expect(fake.requestJob).not.toHaveBeenCalled();

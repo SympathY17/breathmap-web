@@ -7,7 +7,7 @@ import { PrivateFileLink } from './components/private-file-link';
 import { useAssistant } from './components/AssistantProvider';
 import { assistantTargetFromUrl, validSelection, type AssistantSelection } from './lib/assistant-context';
 import WaveformExplorer, { type TimeRange } from './components/WaveformExplorer';
-import { buildCoverageNotice, buildIntervalInsight } from './lib/recording-insights';
+import { buildIntervalInsight } from './lib/recording-insights';
 import './analysis-responsive.css';
 
 const LABELS: Record<string, [string, string]> = { normal: ['Normal breathing', '正常呼吸'], cont: ['Normal breathing', '正常呼吸'], continuous: ['Normal breathing', '正常呼吸'], no_inhale: ['Inspiratory interruption', '吸气中断'], no_exhale: ['Expiratory interruption', '呼气中断'], pause: ['No breathing', '无呼吸'], invalid: ['Unavailable', '不可用'], unknown: ['Uncertain', '不确定'], '正常呼吸': ['Normal breathing', '正常呼吸'], '呼吸暂停': ['No breathing', '无呼吸'], '呼吸障碍（未吸气）': ['Inspiratory interruption', '吸气中断'], '呼吸障碍（未呼气）': ['Expiratory interruption', '呼气中断'], '无法判断': ['Uncertain', '不确定'] };
@@ -128,15 +128,22 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     finally { setBusy(false); }
   }
   const pending = jobs.filter(j => ['queued', 'running'].includes(j.status));
+  const analysisPending = pending.some(job => job.operation === 'analyse');
+  const latestAnalysis = jobs.find(job => job.operation === 'analyse');
   const online = !!heartbeat && Date.now() - new Date(heartbeat).getTime() < 90000;
   const execution = display?.execution?.status;
   const summary = display?.summary;
   const usable = ['success', 'partial'].includes(execution);
+  const retryAnalysis = !usable && (!!result || ['failed', 'interrupted'].includes(latestAnalysis?.status));
+  const breathingRate = num(summary?.frequency_bpm);
+  const expiratoryFlow = num(summary?.mean_expiratory_flow_l_min);
+  const validModelWindows = num(display?.window_counts?.valid_model, 0);
+  const modelWindows = num(display?.window_counts?.model, 0);
+  const unavailable = t('Unavailable', '暂无结果');
   const report = display?.report;
   const modelRows: any[] = resultIsCurrent(result?.windows?.model, hash) ? result.windows.model.items ?? [] : [];
   const statisticsRows: any[] = resultIsCurrent(result?.windows?.statistics, hash) ? result.windows.statistics.items ?? [] : [];
   const attentionRows: any[] = resultIsCurrent(result?.windows?.attention, hash) ? result.windows.attention.items ?? [] : [];
-  const coverageNotice = buildCoverageNotice(display, lang);
   const intervalInsight = buildIntervalInsight({ selection: intervalSelection ?? viewRange, model: modelRows, statistics: statisticsRows }, lang);
   const patternCounts: Record<string, number> = summary?.model_window_counts ?? {};
   const rows = resultIsCurrent(result?.windows?.[kind], hash) ? result.windows[kind].items ?? [] : [];
@@ -273,23 +280,19 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     </header>
     <nav className="result-assistant-tabs" aria-label={t('Recording workspace', '记录工作区')}><a href={`/analysis?recordId=${recordingId}`} aria-current={detailed ? 'page' : undefined}>{t('Data analysis', '数据分析')}</a><button type="button" onClick={() => askAssistant()}><MessageCircle size={17} />{t('AI explanation & chat', 'AI 解读与对话')}</button></nav>
     {error && <p role="alert" className="result-status error">{error}</p>}
-    {pending.length > 0 && <div className="result-status" role="status">{pending.some(j => j.status === 'running') ? t('Your request is being processed.', '正在处理你的请求。') : online ? t('Your request is queued for the analysis host.', '请求已排队，等待分析主机处理。') : t('Your request has been saved. It will continue when the analysis host is available.', '请求已保存，将在分析主机可用后继续。')} {t('Saved results remain available.', '已有结果仍可查看。')}</div>}
-    {execution === 'partial' && <section className={`result-status ${coverageNotice.tone}`} aria-label={t('Analysis coverage', '分析覆盖情况')}>
-      <strong>{coverageNotice.title}</strong>
-      {coverageNotice.tone === 'warn' ? <ul className="coverage-details">{coverageNotice.details.map(detail => <li key={detail}>{detail}</li>)}</ul> : <details className="coverage-details"><summary>{t('View coverage and calculation boundaries', '查看覆盖时间和计算边界')}</summary><ul>{coverageNotice.details.map(detail => <li key={detail}>{detail}</li>)}</ul></details>}
+    {pending.length > 0 && <div className="result-status" role="status">{pending.some(j => j.status === 'running') ? t('Your request is being processed.', '正在处理你的请求。') : online ? t('Your request is queued for the analysis host.', '请求已排队，等待分析主机处理。') : t('Your request has been saved. It will continue when the analysis host is available.', '请求已保存，将在分析主机可用后继续。')}{usable && ` ${t('Saved results remain available.', '已有结果仍可查看。')}`}</div>}
+    {!analysisPending && ['error', 'unable_to_analyze'].includes(execution) && <div className="result-status error">{t('This recording could not be fully analysed. You can retry analysis using the original file.', '这条记录无法完成分析，可以使用原文件重试分析。')}</div>}
+    {usable && <section className="result-grid" aria-label={t('Recording metrics', '记录指标')}>
+      <div className="result-metric"><span>{t('Mean breathing rate', '平均呼吸频率')}</span><strong>{breathingRate}</strong><small>{breathingRate === '—' ? unavailable : t('breaths/min', '次/分')}</small></div>
+      <div className="result-metric"><span>{t('Mean estimated expiratory flow', '平均估计呼气流量')}</span><strong>{expiratoryFlow}</strong><small>{expiratoryFlow === '—' ? unavailable : 'L/min'}</small></div>
+      <div className="result-metric"><span>{t('Valid model windows', '有效模型窗口')}</span><strong>{validModelWindows} / {modelWindows}</strong><small>{validModelWindows === '—' || modelWindows === '—' ? unavailable : t('Overlapping windows; not independent events', '窗口可能重叠，不等同于独立事件')}</small></div>
     </section>}
-    {['error', 'unable_to_analyze'].includes(execution) && <div className="result-status error">{t('This recording could not be fully analysed. You can retry analysis using the original file.', '这条记录无法完成分析，可以使用原文件重试分析。')}</div>}
-    <section className="result-grid" aria-label={t('Recording metrics', '记录指标')}>
-      <div className="result-metric"><span>{t('Mean breathing rate', '平均呼吸频率')}</span><strong>{num(summary?.frequency_bpm)}</strong><small>{t('breaths/min', '次/分')}</small></div>
-      <div className="result-metric"><span>{t('Mean estimated expiratory flow', '平均估计呼气流量')}</span><strong>{num(summary?.mean_expiratory_flow_l_min)}</strong><small>L/min</small></div>
-      <div className="result-metric"><span>{t('Valid model windows', '有效模型窗口')}</span><strong>{num(display?.window_counts?.valid_model, 0)} / {num(display?.window_counts?.model, 0)}</strong><small>{t('Overlapping windows; not independent events', '窗口可能重叠，不等同于独立事件')}</small></div>
-    </section>
     <nav className="result-section-links" aria-label={t('On this recording', '本次记录内容')}>{usable && <a href="#waveforms">{t('Waveforms', '波形')}</a>}{usable && detailed && <a href="#analysis-windows">{t('Analysis windows', '分析窗口')}</a>}<a href="#recording-information">{t('Recording information', '记录信息')}</a><a href="#recording-notes">{t('Your notes', '记录备注')}</a></nav>
     <div className="result-workspace">
     <div className="result-primary">
-    {!result && <section className="result-card"><h2>{t('Ready to analyse', '准备分析')}</h2><p>{t('Your original recording is saved. Start analysis to calculate metrics and classify breathing windows using the existing model.', '原始记录已保存。开始分析后，将计算指标并使用已有模型对呼吸窗口分类。')}</p><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'analyse')} onClick={() => void submit('analyse')}>{t('Start analysis', '开始分析')}</button></section>}
-    {jobs.filter(j => ['failed', 'interrupted'].includes(j.status)).slice(0, 1).map(job => <div className="result-status warn" key={job.id}>{t('A previous request needs attention.', '此前有一项请求需要处理。')} {job.error_code}<p className="result-note">{job.status === 'interrupted' ? t('The operator must review the interrupted task before it is run again.', '中断的任务需要操作员复核后再继续。') : t('You can retry the relevant action below. Saved numerical results are retained.', '可在下方重试对应操作，已有数值结果会保留。')}</p></div>)}
-    {result && !usable && <div className="result-actions"><button className="solid-button" disabled={busy || pending.some(j => j.operation === 'analyse')} onClick={() => void submit('analyse')}>{t('Retry analysis', '重试分析')}</button></div>}
+    {!result && !analysisPending && !retryAnalysis && <section className="result-card"><h2>{t('Ready to analyse', '准备分析')}</h2><p>{t('Your original recording is saved. Start analysis to calculate metrics and classify breathing windows using the existing model.', '原始记录已保存。开始分析后，将计算指标并使用已有模型对呼吸窗口分类。')}</p><button className="solid-button" disabled={busy} onClick={() => void submit('analyse')}>{t('Start analysis', '开始分析')}</button></section>}
+    {!analysisPending && jobs.filter(j => ['failed', 'interrupted'].includes(j.status)).slice(0, 1).map(job => <div className="result-status warn" key={job.id}>{t('A previous request needs attention.', '此前有一项请求需要处理。')} {job.error_code}<p className="result-note">{job.status === 'interrupted' ? t('The operator must review the interrupted task before it is run again.', '中断的任务需要操作员复核后再继续。') : usable ? t('You can retry the relevant action below. Saved numerical results are retained.', '可在下方重试对应操作，已有数值结果会保留。') : t('You can retry the relevant action below.', '可在下方重试对应操作。')}</p></div>)}
+    {retryAnalysis && !analysisPending && <div className="result-actions"><button className="solid-button" disabled={busy} onClick={() => void submit('analyse')}>{t('Retry analysis', '重试分析')}</button></div>}
     {usable && <>
       {!detailed && <div className="result-actions"><a className="solid-button" href={`/analysis?recordId=${recordingId}`}>{t('View detailed analysis', '查看详细分析')} <ArrowRight size={15} /></a></div>}
       <section className="result-card recording-findings" aria-label={t('Recording findings', '记录结果概览')}>

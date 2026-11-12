@@ -37,7 +37,7 @@ export default function AssistantView({ mode = 'page' }: { mode?: 'page' | 'draw
   const [recordingChoices, setRecordingChoices] = useState<{ owner?: string; rows: any[] }>({ rows: [] }), [recordLimit, setRecordLimit] = useState(50), [pickerError, setPickerError] = useState(false);
   const recordings = recordingChoices.owner === user?.id ? recordingChoices.rows : [];
   const [jobLimit, setJobLimit] = useState(50), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [consentKey, setConsentKey] = useState(''), [activeTab, setActiveTab] = useState<'chat' | 'report'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'report'>('chat');
   const lock = useRef(false), messageEnd = useRef<HTMLDivElement>(null);
   const data = useAssistantRecord(recordId, user?.id, jobLimit);
   const result = data.result;
@@ -62,11 +62,9 @@ export default function AssistantView({ mode = 'page' }: { mode?: 'page' | 'draw
   const pending = [...data.jobs.filter(job => ['queued', 'running'].includes(job.status)), ...accepted.filter(job => !data.jobs.some(saved => saved.id === job.id)).map(job => ({ id: job.id, operation: job.operation, payload: { assistant_context: { conversation_id: job.conversationId } }, status: 'queued' }))];
   const waiting = pending.some(job => job.operation === 'chat' && conversationId(job) === conversation);
   const { online, supportsContext, ready } = assistantServiceState(data.heartbeat);
-  const consent = consentKey === bindingKey && !!bindingKey;
   const report = display?.report;
   const reportReady = report?.status === 'ready';
   const showSavedOnly = !online;
-  const consentControl = <div className="assistant-consent-options"><label className="assistant-consent"><input type="checkbox" checked={consent} onChange={event => setConsentKey(event.target.checked ? bindingKey : '')} /><span>{t('Allow DeepSeek to use this recording’s analysis and conversation context.', '允许 DeepSeek 使用本条记录的分析结果与对话上下文。')}</span></label><details><summary>{t('What is shared?', '查看数据使用说明')}</summary><p>{t('The structured analysis, selected interval, question and excerpts from up to two previous turns are sent for explanation. Original files and diary entries are not sent. Consent resets when the recording or analysis changes.', '为生成解读，将发送结构化分析、选中区间、问题及最近至多两轮对话节选。不发送原始文件或日记。切换记录或更新分析后，需要重新授权。')}</p></details></div>;
   useEffect(() => {
     let active = true;
     if (!supabase || !user?.id) return;
@@ -82,7 +80,7 @@ export default function AssistantView({ mode = 'page' }: { mode?: 'page' | 'draw
       assistant.setConversation(bindingKey, latest ? conversationId(latest) : crypto.randomUUID());
     }
   }, [data.loading, data.record?.id, bindingKey, conversation]);
-  useEffect(() => { setConsentKey(''); setError(''); setJobLimit(50); }, [recordId, hash]);
+  useEffect(() => { setError(''); setJobLimit(50); }, [recordId, hash]);
   useEffect(() => {
     for (const job of data.jobs) if (assistant.acceptedJobs?.[job.id] && !['queued', 'running'].includes(job.status)) assistant.forgetJob(job.id);
   }, [data.jobs, assistant.acceptedJobs]);
@@ -106,15 +104,15 @@ export default function AssistantView({ mode = 'page' }: { mode?: 'page' | 'draw
   async function submit(operation: 'analyse' | 'report' | 'chat') {
     if (!recordId || lock.current || !data.record || data.failed) return;
     if (pending.some(job => job.operation === operation && (operation !== 'chat' || conversationId(job) === conversation))) return;
-    if (operation === 'chat' && (!ready || !consent || !usable || !canContinue || !assistantUuid(conversation))) return;
-    if (operation === 'report' && (!online || !consent || !usable)) return;
+    if (operation === 'chat' && (!ready || !usable || !canContinue || !assistantUuid(conversation))) return;
+    if (operation === 'report' && (!online || !usable)) return;
     if (operation === 'analyse' && !online) return;
     if (operation === 'chat' && (!question.trim() || question.trim().length > ASSISTANT_QUESTION_LIMIT || waiting)) return;
     const submittedKey = draftKey, submittedQuestion = question;
     lock.current = true; setBusy(true); setError('');
     try {
       const payload: Record<string, unknown> = { language: lang, ...(hash ? { result_sha256: hash } : {}) };
-      if (operation !== 'analyse') payload.ai_consent = consent;
+      if (operation !== 'analyse') payload.ai_consent = true;
       if (operation === 'chat') {
         payload.question = question.trim();
         payload.assistant_context = { version: 1, conversation_id: conversation,
@@ -163,11 +161,35 @@ export default function AssistantView({ mode = 'page' }: { mode?: 'page' | 'draw
                   {thread.map(job => <article className="assistant-exchange" key={job.id}><div className="assistant-user-message"><span>{t('You', '我')}</span><p>{job.payload.question}</p>{job.payload.assistant_context?.selection && <small>{formatNumber(job.payload.assistant_context.selection.start_s)}–{formatNumber(job.payload.assistant_context.selection.end_s)} s</small>}</div><div className="assistant-answer"><span className="assistant-speaker"><MessageCircle size={15} />{t('BreathMap assistant', 'BreathMap 助手')}</span>{job.status === 'completed' ? <><EvidenceAnswer answer={job.result?.answer} result={result} recordingId={recordId} lang={lang} close={assistant.close} />{job.payload.assistant_context && !confirmedAssistantContext(job) && <p className="assistant-note">{t('The saved response does not confirm use of the selected interval or conversation context.', '这条已保存回答未确认使用所选区间或对话上下文。')}</p>}{job.result?.assistant_context?.history_excerpted && <p className="assistant-note">{t('This response used excerpts from up to two previous turns. Earlier messages remain available here.', '本次回答参考了最近至多两轮对话的节选，较早消息仍可在此查阅。')}</p>}</> : <p role="status">{job.status === 'queued' ? online ? t('Your question is queued.', '问题已排队。') : t('Your question is saved and waiting for the service.', '问题已保存，等待服务恢复。') : job.status === 'running' ? t('Preparing an answer…', '正在生成回答…') : t('No answer was saved. Your earlier conversation is still available.', '本次回答未能保存，之前的对话仍可查看。')}</p>}</div></article>)}<div ref={messageEnd} />
                 </div>
                 {!canContinue && <p className="assistant-note">{t('This saved conversation has no confirmed shared context. Start a new conversation to ask follow-up questions.', '这段历史未确认使用统一的对话上下文。请新建对话后连续提问。')}</p>}
-                <form className="assistant-composer" onSubmit={submitQuestion}>{consentControl}<label className="assistant-input-label" htmlFor={`assistant-question-${mode}`}>{t('Ask about this recording', '询问这条记录')}</label><textarea id={`assistant-question-${mode}`} value={question} maxLength={ASSISTANT_QUESTION_LIMIT} rows={2} placeholder={selection ? t('Ask about the selected interval…', '询问当前选中的片段…') : t('Ask about the report or a breathing metric…', '询问报告内容或某项呼吸指标…')} disabled={busy || !canContinue || !conversation} onChange={event => updateQuestion(event.target.value)} /><div className="assistant-compose-actions"><small>{question.length} / {ASSISTANT_QUESTION_LIMIT}</small><button className="assistant-primary" type="submit" disabled={busy || waiting || !ready || !consent || !canContinue || !question.trim() || !assistantUuid(conversation)}><Send size={16} />{waiting ? t('Waiting for answer', '等待回答') : t('Send', '发送')}</button></div></form>
+                <form className="assistant-composer" onSubmit={submitQuestion}>
+                  <label className="assistant-input-label" htmlFor={`assistant-question-${mode}`}>{t('Ask about this recording', '询问这条记录')}</label>
+                  <textarea id={`assistant-question-${mode}`} value={question} maxLength={ASSISTANT_QUESTION_LIMIT} rows={2} placeholder={selection ? t('Ask about the selected interval…', '询问当前选中的片段…') : t('Ask about the report or a breathing metric…', '询问报告内容或某项呼吸指标…')} disabled={busy || !canContinue || !conversation} onChange={event => updateQuestion(event.target.value)} />
+                  <div className="assistant-compose-actions">
+                    <small>{question.length} / {ASSISTANT_QUESTION_LIMIT}</small>
+                    <button className="assistant-primary" type="submit" disabled={busy || waiting || !ready || !canContinue || !question.trim() || !assistantUuid(conversation)}>
+                      <Send size={16} />{waiting ? t('Waiting for answer', '等待回答') : t('Send to DeepSeek', '发送给 DeepSeek')}
+                    </button>
+                  </div>
+                </form>
               </div> : <div id={`assistant-report-${mode}`} role="tabpanel" aria-labelledby={`assistant-report-tab-${mode}`} className="assistant-report">
-                {consentControl}
                 <div className="assistant-report-heading"><div><h2>{t('Your recording explained', '本次记录解读')}</h2><p>{t('A readable report, grounded in the saved analysis.', '结合已保存的分析结果，理解这次呼吸记录。')}</p></div></div>
-                {reportReady ? <><p className="assistant-note">{['offline_stub', 'simulated'].includes(report.source) ? t('Simulated explanation', '模拟解读') : ['deepseek', 'live'].includes(report.source) ? 'DeepSeek' : t('Saved explanation · source not verified', '已保存解读 · 来源未核实')}</p><EvidenceAnswer answer={report} result={result} recordingId={recordId} lang={lang} close={assistant.close} /><details><summary>{t('Update this explanation', '更新这份解读')}</summary><p className="assistant-note">{t('Regeneration uses the current saved analysis and starts a new AI request.', '重新生成将使用当前分析结果，发起一次新的 AI 请求。')}</p><button className="assistant-secondary" disabled={busy || !online || !consent || pending.some(job => job.operation === 'report')} onClick={() => void submit('report')}>{t('Regenerate explanation', '重新生成解读')}</button></details></> : <div className="assistant-empty assistant-empty--compact"><FileText size={25} /><p>{t('No explanation has been saved yet. Your numerical results remain available.', '尚无已保存的解读，已有数值结果仍可查看。')}</p><button className="assistant-primary" disabled={busy || !online || !consent || pending.some(job => job.operation === 'report')} onClick={() => void submit('report')}>{pending.some(job => job.operation === 'report') ? t('Explanation requested', '解读请求已保存') : t('Generate AI explanation', '生成 AI 解读')}</button></div>}
+                {reportReady ? <>
+                  <p className="assistant-note">{['offline_stub', 'simulated'].includes(report.source) ? t('Simulated explanation', '模拟解读') : ['deepseek', 'live'].includes(report.source) ? 'DeepSeek' : t('Saved explanation · source not verified', '已保存解读 · 来源未核实')}</p>
+                  <EvidenceAnswer answer={report} result={result} recordingId={recordId} lang={lang} close={assistant.close} />
+                  <details>
+                    <summary>{t('Update this explanation', '更新这份解读')}</summary>
+                    <p className="assistant-note">{t('Regeneration uses the current saved analysis and starts a new AI request.', '重新生成将使用当前分析结果，发起一次新的 AI 请求。')}</p>
+                    <button type="button" className="assistant-secondary" disabled={busy || !online || pending.some(job => job.operation === 'report')} onClick={() => void submit('report')}>
+                      {t('Regenerate with DeepSeek', '用 DeepSeek 重新生成')}
+                    </button>
+                  </details>
+                </> : <div className="assistant-empty assistant-empty--compact">
+                  <FileText size={25} />
+                  <p>{t('No explanation has been saved yet. Your numerical results remain available.', '尚无已保存的解读，已有数值结果仍可查看。')}</p>
+                  <button type="button" className="assistant-primary" disabled={busy || !online || pending.some(job => job.operation === 'report')} onClick={() => void submit('report')}>
+                    {pending.some(job => job.operation === 'report') ? t('Explanation requested', '解读请求已保存') : t('Generate with DeepSeek', '用 DeepSeek 生成解读')}
+                  </button>
+                </div>}
               </div>}
             </>}
             {error && <p className="assistant-error" role="alert">{error}</p>}

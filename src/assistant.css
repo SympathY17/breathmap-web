@@ -5,10 +5,6 @@
 :root { --assistant-drawer-width: 28rem; }
 .assistant-record-picker > summary { min-height: var(--touch-target); color: var(--color-accent); font-size: .8125rem; cursor: pointer; }
 .assistant-view--page > .assistant-record-picker > summary { display: none; }
-.assistant-consent-options { margin-block-end: var(--space-sm); color: var(--color-muted); font-size: .75rem; }
-.assistant-consent-options > details { margin-inline-start: 1.5rem; }
-.assistant-consent-options summary { cursor: pointer; padding-block: .25rem; }
-.assistant-consent-options details p { margin-block: var(--space-xs); line-height: 1.7; }
 .assistant-view--drawer .assistant-conversation { flex: none; min-height: auto; }
 .assistant-view--drawer .assistant-composer { position: static; }
 .assistant-view--drawer .assistant-messages { flex: none; }
@@ -175,9 +171,6 @@ body:has(.sleep-chat-delete-dialog) > .dialog-overlay { z-index: 150; }
 .assistant-view .assistant-primary, .assistant-actions .assistant-primary { color: var(--color-surface); background: var(--color-accent); }
 .assistant-secondary { color: var(--color-accent); background: transparent; }
 .assistant-text-action { display: inline-flex; align-items: center; justify-content: center; gap: calc(var(--space-xs) / 2); min-height: var(--touch-target); padding: var(--space-xs) 0; border: 0; color: var(--color-accent); background: transparent; font-size: .75rem; text-underline-offset: 3px; white-space: nowrap; }
-.assistant-consent { display: flex; align-items: flex-start; gap: var(--space-xs); margin-block: 0; color: var(--color-muted); font-size: .6875rem; line-height: 1.8; }
-.assistant-consent > input { width: 1rem; height: 1rem; flex: none; margin: .25rem 0 0; accent-color: var(--color-accent); }
-.assistant-consent > span { min-width: 0; }
 .assistant-bottom-actions { display: flex; justify-content: space-between; align-items: center; gap: var(--space-xs); border-block-start: 1px solid var(--color-rule); }
 .assistant-error { margin: 0; padding: var(--space-sm); border-radius: var(--radius-control); color: var(--color-error); background: var(--color-error-surface); font-size: .8125rem; }
 .assistant-empty { display: flex; align-items: flex-start; flex-direction: column; justify-content: center; min-width: 0; min-height: 25rem; padding: var(--space-xl) var(--space-sm); }

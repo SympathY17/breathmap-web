@@ -235,16 +235,37 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     await click(button('Ask about this interval'));
     expect(mocked.showAssistant).toHaveBeenCalledWith({recordingId:recordId,resultHash:hashA,selection:{start_s:10,end_s:15,window_id:'OLD-06',kind:'model'}});
   });
-  it('explains known calculation boundaries without displaying the generic warning', async () => {
-    mocked.result.display.extent={duration_s:3600,analysis_start_s:0,analysis_end_s:3600};
-    mocked.result.display.execution.partial_reasons=['flow_partial_coverage','voltage_partial_coverage'];
-    Object.assign(mocked.result.display.summary,{flow_valid_s:3594.72,flow_coverage_fraction:3594.72/3600});
-    mocked.result.display.quality={bad_input_rows:0,invalid_sample_s:0,model_rejected_windows:0,flow:{phase_seconds:{'-1':1377.46,'0':0,'1':2217.26,'3':0,'8':.28,'9':5}},voltage:{aligned_coverage_fraction:359999/360000}};
+  it('shows available metrics and labels missing metrics without a coverage banner', async () => {
+    mocked.result.display.summary.frequency_bpm = 0;
+    mocked.result.display.summary.mean_expiratory_flow_l_min = null;
     await mount();
-    expect(container.querySelector('.result-status.info')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Analysis coverage"]')).toBeNull();
     expect(container.querySelector('.result-status.warn')).toBeNull();
-    expect(container.textContent).toContain('5.28');
-    expect(container.textContent).toContain('0.01');
+    const metrics = container.querySelectorAll('.result-grid .result-metric');
+    expect(metrics[0].querySelector('strong')?.textContent).toBe('0');
+    expect(metrics[0].querySelector('small')?.textContent).toBe('breaths/min');
+    expect(metrics[1].querySelector('strong')?.textContent).toBe('—');
+    expect(metrics[1].querySelector('small')?.textContent).toBe('Unavailable');
+  });
+  it('shows progress for a newly queued analysis and offers a retry after failure', async () => {
+    mocked.result = null;
+    mocked.heartbeat = [{ last_seen: new Date().toISOString() }];
+    const job = { id: 'upload-analysis', operation: 'analyse', status: 'queued' };
+    mocked.jobs = [job];
+    await mount();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('queued');
+    expect(container.textContent).not.toMatch(/Ready to analyse|Start analysis|Retry analysis/);
+    expect(container.querySelector('.result-grid')).toBeNull();
+
+    mocked.jobs = [{ ...job, status: 'running' }];
+    await tick();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('being processed');
+    expect(container.textContent).not.toMatch(/Ready to analyse|Start analysis|Retry analysis/);
+
+    mocked.jobs = [{ ...job, status: 'failed' }];
+    await tick();
+    expect(button('Retry analysis')).toBeTruthy();
+    expect(mocked.requestJob).not.toHaveBeenCalled();
   });
   it('restores a cached detail after returning to the overview without creating another job', async () => {
     mocked.jobs=[{id:'cached',operation:'waveform',status:'completed',payload:{_result_sha256:hashA,start:10,end:15},result:{result_sha256:hashA,waveform:waveform(10,15)}}];
