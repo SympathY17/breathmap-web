@@ -940,8 +940,8 @@ export const guestDemo: GuestDemo = {
     "resultSha256": "9b7c5daa5e2185a3b6bed1b9cc3c9993a77da4fe3a5751680b682452a7e51273",
     "explanationSource": "saved",
     "note": {
-      "en": "Saved signals and AI interpretation from a synthetic recording. Mean estimated expiratory flow is set to 7.13 L/min for this demo; other numerical values come from the saved results and are rounded for display. Source hashes identify the original recording and results. Chinese text translates the saved English excerpts. No new analysis or AI request is made in this preview.",
-      "zh": "来自合成记录的已保存信号和 AI 解读。此演示将平均估计呼气流量设为 7.13 L/min；其他数值来自已保存结果，并按显示精度取舍。来源哈希对应原始记录和结果。中文为已保存英文节选的翻译。此预览不会发起新的分析或 AI 请求。"
+      "en": "This example uses a synthetic recording and saved analysis. The mean estimated expiratory flow shown in the demo is set to 7.13 L/min.",
+      "zh": "示例使用合成记录和已保存的分析结果。演示中的平均估计呼气流量设为 7.13 L/min。"
     }
   }
 };

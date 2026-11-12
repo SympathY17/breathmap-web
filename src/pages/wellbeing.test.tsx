@@ -182,17 +182,118 @@ describe('rendered wellbeing form persistence',()=>{
     await click(button('Skip'));expect(memory.tables.monitoring[0].fields.status).toBe('Skipped');
   });
 
-  it('persists the actual relax preference shape, including sound, duration, volume and favourites',async()=>{
+  it('migrates legacy sounds and persists the duration, volume and favourites',async()=>{
+    memory.tables.profiles[0].fields.relaxPreferences=JSON.stringify({
+      relax:{mode:'rain',durationMinutes:15,volume:28,favorites:['low','noise','unrecognised']},
+    });
     await mount('relax');
-    await click(container.querySelector<HTMLInputElement>('input[name="wm-r-sound"][value="rain"]')!);
+    expect(container.querySelector<HTMLInputElement>('input[value="light-rain"]')!.checked).toBe(true);
+    expect(input('Duration').value).toBe('15');
+    expect(input('Volume').value).toBe('28');
     await fill(input('Duration'),'20');await fill(input('Volume'),'37');
     await click(button('Favourite'));
-    expect(JSON.parse(memory.tables.profiles[0].fields.relaxPreferences)).toEqual({relax:{mode:'rain',durationMinutes:20,volume:37,favorites:['rain']}});
+    expect(JSON.parse(memory.tables.profiles[0].fields.relaxPreferences)).toEqual({
+      relax:{mode:'light-rain',durationMinutes:20,volume:37,favorites:['ocean-waves','light-rain']},
+    });
     await reload('relax');
-    expect(container.querySelector<HTMLInputElement>('input[value="rain"]')!.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[value="light-rain"]')!.checked).toBe(true);
     expect(input('Duration').value).toBe('20');expect(input('Volume').value).toBe('37');
     expect(button('Unfavourite').getAttribute('aria-pressed')).toBe('true');
-    await click(button('Unfavourite'));expect(JSON.parse(memory.tables.profiles[0].fields.relaxPreferences).relax.favorites).toEqual([]);
+    await click(button('Unfavourite'));
+    expect(JSON.parse(memory.tables.profiles[0].fields.relaxPreferences).relax.favorites).toEqual(['ocean-waves']);
+  });
+
+  it('loops the chosen sound, updates volume and releases it at expiry or when leaving',async()=>{
+    const play=vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined);
+    const pause=vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{});
+    const load=vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{});
+    await mount('relax');
+    expect(play).not.toHaveBeenCalled();
+    expect(container.querySelector('a[href="/audio/wind-down/credits.html"]')?.textContent).toBe('Audio credits');
+    await click(container.querySelector<HTMLInputElement>('input[value="ocean-waves"]')!);
+    await fill(input('Duration'),'5');await click(button('Start'));
+    const player=play.mock.contexts[0] as HTMLAudioElement;
+    expect(player.getAttribute('src')).toBe('/audio/wind-down/ocean-waves.mp3');
+    expect(player.loop).toBe(true);
+    expect(player.volume).toBe(0.2);
+    await fill(input('Volume'),'37');
+    expect(player.volume).toBe(0.37);
+    await act(async()=>{vi.advanceTimersByTime(2000);});
+    await click(button('Pause'));
+    expect(pause.mock.contexts).toContain(player);
+    expect(player.getAttribute('src')).toContain('ocean-waves.mp3');
+    await click(button('Resume'));
+    expect(play.mock.contexts[1]).toBe(player);
+    await act(async()=>{
+      vi.setSystemTime(new Date(fixedNow.getTime()+300000));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(container.querySelector('[role="timer"]')?.textContent).toContain('Session finished');
+    expect(player.getAttribute('src')).toBeNull();
+    expect(load.mock.contexts).toContain(player);
+
+    await click(container.querySelector<HTMLInputElement>('input[value="campfire"]')!);
+    await click(button('Start again'));
+    const campfire=play.mock.contexts[2] as HTMLAudioElement;
+    expect(campfire.getAttribute('src')).toBe('/audio/wind-down/campfire.mp3');
+    await reload('diary');
+    expect(pause.mock.contexts).toContain(campfire);
+    expect(campfire.getAttribute('src')).toBeNull();
+  });
+
+  it('uses Web Audio gain when the device ignores media volume',async()=>{
+    vi.spyOn(HTMLMediaElement.prototype,'volume','get').mockReturnValue(1);
+    vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{});
+    vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{});
+    const gain={gain:{value:1},connect:vi.fn()};
+    const connect=vi.fn(()=>gain);
+    const close=vi.fn().mockResolvedValue(undefined);
+    const resume=vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('AudioContext',class {
+      state='suspended';destination={};close=close;resume=resume;
+      createGain(){return gain;}
+      createMediaElementSource(){return {connect};}
+    });
+    try {
+      await mount('relax');
+      await click(container.querySelector<HTMLInputElement>('input[value="light-rain"]')!);
+      await click(button('Start'));
+      expect(connect).toHaveBeenCalledWith(gain);
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(gain.gain.value).toBe(0.2);
+      await fill(input('Volume'),'37');
+      expect(gain.gain.value).toBe(0.37);
+      await click(button('Stop'));
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('keeps time after sound failures and ignores a late rejection after stopping',async()=>{
+    let rejectPending!: (error: Error) => void;
+    const play=vi.spyOn(HTMLMediaElement.prototype,'play')
+      .mockRejectedValueOnce(new Error('Playback denied'))
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(()=>new Promise<void>((_,reject)=>{rejectPending=reject;}));
+    vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{});
+    vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{});
+    await mount('relax');
+    await click(container.querySelector<HTMLInputElement>('input[value="light-rain"]')!);
+    await click(button('Start'));
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('The timer is still running');
+    expect(container.querySelector('[role="timer"]')?.textContent).toContain('In progress');
+    await click(button('Retry sound'));
+    const player=play.mock.contexts[1] as HTMLAudioElement;
+    expect(player.getAttribute('src')).toBe('/audio/wind-down/light-rain.mp3');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async()=>{player.dispatchEvent(new Event('error'));});
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('The sound could not play');
+    await click(button('Retry sound'));
+    expect(container.textContent).toContain('Loading sound…');
+    await click(button('Stop'));
+    await act(async()=>{rejectPending(new Error('Playback aborted'));});
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.querySelector('[role="timer"]')?.textContent).toContain('10:00');
   });
 
   it('runs, pauses and stops the quiet timer using elapsed clock time without creating a measurement',async()=>{

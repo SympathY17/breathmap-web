@@ -509,7 +509,7 @@ export default function Block(){
           {fileCheckStatus==="valid"&&fileCheckSummary&&<div className="notice"><p className="button-row"><Check size={17}/>{t(`Format checked · ${fileCheckSummary.sheets.length} sheets`,`格式核验通过 · ${fileCheckSummary.sheets.length} 张表`)}</p><p className="small muted">{fileCheckSummary.sheets.map(sheet=>`${sheet.name}: ${sheet.rows.toLocaleString(lang==="zh"?"zh-CN":"en-GB")} ${t("samples","条样本")}`).join(" · ")}</p></div>}
           {fileCheckStatus==="invalid"&&fileCheckError&&<p className="notice error" role="alert">{t(fileCheckError.en,fileCheckError.zh)}</p>}
         </div>
-        <p id="bm-file-help" className="upload-disclaimer">{t("Keep the acquisition system's original XLSX format and both worksheets. The format check does not perform respiratory analysis.", "请保持采集系统导出的原始 XLSX 格式及两张工作表。格式核验不会进行呼吸分析。")}</p>
+        <p id="bm-file-help" className="upload-disclaimer">{t("Use the original XLSX file exported by your device, with both worksheets.", "请使用设备采集系统导出的原始 XLSX 文件，并保留两张工作表。")}</p>
       </>}
       <div className={upload ? "upload-fields" : "bm-form"}>
         <div className="field"><label htmlFor="bm-title">{t("Recording name", "记录名称")}</label><input id="bm-title" value={title} onChange={e => setTitle(e.target.value)} maxLength={1024} required disabled={busy} placeholder={t("Give this recording an easy-to-recognise name", "给这份记录一个容易辨认的名字")}/></div>
@@ -584,12 +584,9 @@ export default function Block(){
           </form>
         </section>
         <aside className="upload-aside">
-          <span className="eyebrow">{t("BEFORE YOU START", "开始之前")}</span>
-          <h2>{t("Make your recording easier to revisit", "让记录更容易回顾")}</h2>
-          <p>{t("Choose a clear name and add the collection details you remember.", "使用清楚的名称，补充你记得的采集情况。")}</p>
+          <h2>{t("File requirements", "文件要求")}</h2>
           <hr/>
-          <div><FileText size={20}/><p>{t("Upload one original XLSX recording with both worksheets. Current file limit: 50 MB.", "每次上传一份包含两张工作表的原始 XLSX 记录，当前单文件上限为 50 MB。")}</p></div>
-          <div><RotateCcw size={20}/><p>{t("Reopen your recording from your personal dashboard at any time.", "保存后，可以随时回首页重新查看。")}</p></div>
+          <div><FileText size={20}/><p>{t("One XLSX file per upload, up to 50 MB.", "每次上传一份 XLSX 文件，大小不超过 50 MB。")}</p></div>
         </aside>
       </div>}
     </>}

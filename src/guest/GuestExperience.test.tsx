@@ -100,7 +100,6 @@ describe('public guest preview', () => {
 
   it('follows a saved explanation citation into its exact local waveform interval', async () => {
     await mount({ initialView: 'explanation' });
-    expect(container.textContent).toContain('Your visit does not send a new AI request');
     const researchClaim = Array.from(container.querySelectorAll('.guest-saved-claim')).find(item => item.textContent?.includes('frozen research model'))!;
     await act(async () => researchClaim.querySelector<HTMLButtonElement>('button')!.click());
     expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Demo waveform');

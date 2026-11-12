@@ -84,6 +84,5 @@ export default function AuthPages({ path, notice = '' }: { path: string; notice?
       {account ? <div className="auth-links"><a href="/">{t('Back to your overview', '返回个人首页')}</a><a href="/forgot-password">{t('Change password', '修改密码')}</a><button className="text-button" disabled={busy} onClick={async () => { if (!supabase) return; setBusy(true); const { error } = await supabase.auth.signOut(); if (error) { setError(error.message); setBusy(false); } else window.location.replace('/login'); }}>{t('Sign out', '退出登录')}</button></div> : <div className="auth-links">{!signup && !forgot && !reset && <><a href="/forgot-password">{t('Forgot password?', '忘记密码？')}</a><a href="/demo">{t('Explore as guest', '游客体验')}</a></>}{(signup || forgot || reset) && <a href="/login"><ArrowLeft size={14} /> {t('Back to sign in', '返回登录')}</a>}</div>}
       {!account && !signup && !forgot && !reset && <p>{t('Registration is temporarily unavailable. You can explore as a guest or sign in with an existing account.', '注册暂未开放。你可以先以游客身份体验，或使用已有账号登录。')}</p>}
     </section>
-    <footer className="auth-footer">{t('Your recordings support understanding and review. They do not replace clinical assessment.', '呼吸记录用于理解与回顾，不能代替临床评估。')}</footer>
   </main>;
 }
