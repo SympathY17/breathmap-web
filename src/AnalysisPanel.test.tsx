@@ -316,3 +316,115 @@ describe('AnalysisPanel saved-result version boundaries', () => {
     expect(container.querySelector('tbody')?.textContent).not.toContain('OLD-01');
   });
 });
+
+describe('AnalysisPanel analysis summary export', () => {
+  function preview() {
+    const dialog = document.querySelector<HTMLElement>('.analysis-summary-dialog');
+    if (!dialog) throw new Error('Analysis summary preview did not open');
+    return dialog;
+  }
+
+  function metric(name: string) {
+    return [...preview().querySelectorAll('dt')].find(label => label.textContent === name)?.nextElementSibling?.textContent;
+  }
+
+  it('only offers export once the current analysis has usable saved results', async () => {
+    mocked.result = null;
+    mocked.jobs = [{ id: 'analysis', operation: 'analyse', status: 'queued' }];
+    await mount();
+    expect(container.querySelector('.analysis-summary-trigger')).toBeNull();
+
+    mocked.jobs = [{ id: 'analysis', operation: 'analyse', status: 'failed' }];
+    await tick();
+    expect(container.querySelector('.analysis-summary-trigger')).toBeNull();
+
+    mocked.result = resultFixture(hashA);
+    mocked.result.display.source_result_sha256 = hashB;
+    mocked.result.display.execution = { status: 'success', partial_reasons: [] };
+    await tick();
+    expect(container.querySelector('.analysis-summary-trigger')).toBeNull();
+
+    mocked.result = { ...mocked.result, display: { ...mocked.result.display, source_result_sha256: hashA } };
+    await tick();
+    await click(button('Export analysis summary'));
+    expect(preview().textContent).toContain('Analysis summary preview');
+    expect(metric('Mean breathing rate')).toBe('17 breaths/min');
+    expect(preview().querySelector('.analysis-summary-limit')).toBeNull();
+    expect(mocked.requestJob).not.toHaveBeenCalled();
+  });
+
+  it('localises a partial summary and distinguishes zero from a missing metric', async () => {
+    localStorage.setItem('breathmap-language', 'zh');
+    mocked.result.display.summary.frequency_bpm = null;
+    mocked.result.display.summary.mean_expiratory_flow_l_min = 0;
+    await mount();
+    await click(button('导出分析摘要'));
+    expect(preview().getAttribute('lang')).toBe('zh-CN');
+    expect(metric('平均呼吸频率')).toBe('不可用');
+    expect(metric('平均估计呼气流量')).toBe('0 L/min');
+    expect(preview().querySelector('.analysis-summary-limit')?.textContent).toBe('呼气流量仅根据可计算的时段估计。');
+    expect(preview().querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
+    expect(mocked.requestJob).not.toHaveBeenCalled();
+  });
+
+  it('excludes saved notes by default and uses saved notes rather than an unsaved edit when included', async () => {
+    mocked.record.notes = 'Saved recording observation.';
+    await mount();
+    const editor = container.querySelector<HTMLTextAreaElement>('.result-notes textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(editor, 'Unsaved note draft.');
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(editor.value).toBe('Unsaved note draft.');
+    await click(button('Export analysis summary'));
+    expect(preview().textContent).not.toMatch(/Saved recording observation|Unsaved note draft/);
+    const checkbox = preview().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(false);
+    await click(checkbox);
+    expect(preview().querySelector('.analysis-summary-notes')?.textContent).toContain('Saved recording observation.');
+    expect(preview().textContent).not.toContain('Unsaved note draft.');
+    await click(preview().querySelector<HTMLButtonElement>('[aria-label="Close dialog"]')!);
+    await click(button('Export analysis summary'));
+    expect(preview().querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
+    expect(preview().textContent).not.toContain('Saved recording observation.');
+  });
+
+  it('sends only the preview sheet to the browser print dialog', async () => {
+    mocked.record.notes = '<script>Personal note as plain text</script>';
+    await mount();
+    await click(button('Export analysis summary'));
+    await click(preview().querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    const print = vi.fn();
+    const iframeSettings = (window as any).happyDOM.settings;
+    const originalIframeSettings = {
+      disableIframePageLoading: iframeSettings.disableIframePageLoading,
+      enableIframePageLoading: iframeSettings.enableIframePageLoading,
+    };
+    iframeSettings.disableIframePageLoading = false;
+    iframeSettings.enableIframePageLoading = true;
+    const append = document.body.append.bind(document.body);
+    const intercept = vi.spyOn(document.body, 'append').mockImplementation((...nodes) => {
+      append(...nodes);
+      for (const node of nodes) {
+        if (!(node instanceof HTMLIFrameElement) || !node.contentWindow) continue;
+        Object.defineProperty(node.contentWindow, 'print', { value: print, configurable: true });
+      }
+    });
+    try {
+      await click([...preview().querySelectorAll('button')].find(item => item.textContent?.trim() === 'Print or save as PDF')!);
+      const printDocument = document.querySelector<HTMLIFrameElement>('.analysis-summary-print-frame')?.contentDocument;
+      expect(print).toHaveBeenCalledTimes(1);
+      expect(printDocument?.title).toBe('BreathMap analysis summary');
+      expect(printDocument?.body.textContent).toContain('Synthetic component fixture');
+      expect(printDocument?.body.textContent).toContain('<script>Personal note as plain text</script>');
+      expect(printDocument?.body.textContent).not.toMatch(/AI explanation & chat|Print or save as PDF|Include my notes|synthetic\.xlsx/);
+      expect(printDocument?.querySelector('script')).toBeNull();
+      await click(preview().querySelector<HTMLButtonElement>('[aria-label="Close dialog"]')!);
+      expect(document.querySelector('.analysis-summary-print-frame')).toBeNull();
+      expect(mocked.requestJob).not.toHaveBeenCalled();
+    } finally {
+      intercept.mockRestore();
+      Object.assign(iframeSettings, originalIframeSettings);
+    }
+  });
+});

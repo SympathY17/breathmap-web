@@ -1,0 +1,115 @@
+.analysis-summary-trigger {
+  margin-block-start: .9rem;
+}
+
+.dialog-content.analysis-summary-dialog {
+  width: min(94vw, 40rem);
+  padding: clamp(1rem, 4vw, 1.75rem);
+}
+
+.analysis-summary-dialog .dialog-header {
+  padding-inline-end: 2rem;
+}
+
+.analysis-summary-dialog .dialog-header h2 {
+  margin-block: 0 .4rem;
+}
+
+.analysis-summary-dialog .dialog-header p {
+  margin-block: 0 .85rem;
+  color: var(--color-muted);
+}
+
+.analysis-summary-option,
+.analysis-summary-actions .solid-button {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+
+.analysis-summary-option {
+  min-height: 2.75rem;
+  flex-wrap: wrap;
+  margin-block-end: .65rem;
+}
+
+.analysis-summary-option input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-accent);
+}
+
+.analysis-summary-option small {
+  color: var(--color-muted);
+}
+
+.analysis-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-start: 1rem;
+}
+
+.analysis-summary-sheet {
+  padding: clamp(.85rem, 3vw, 1.5rem);
+  border: 1px solid #c9dada;
+  border-radius: .75rem;
+  color: #163b3d;
+  background: white;
+  font: 400 1rem/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.analysis-summary-sheet h2 {
+  margin: 0 0 1rem;
+  font-size: 1.4em;
+  line-height: 1.25;
+}
+
+.analysis-summary-sheet section {
+  padding-block: .6em;
+  border-block-start: 1px solid #c9dada;
+}
+
+.analysis-summary-sheet h3 {
+  margin: 0 0 .45em;
+  color: #165957;
+  font-size: 1em;
+  break-after: avoid;
+}
+
+.analysis-summary-sheet dl {
+  margin: 0;
+}
+
+.analysis-summary-sheet dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: .65em;
+  padding-block: .15em;
+  break-inside: avoid;
+}
+
+.analysis-summary-sheet dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.analysis-summary-sheet .analysis-summary-limit {
+  margin: .5em 0 0;
+  color: #435b5c;
+  font-size: .9em;
+}
+
+.analysis-summary-note-text {
+  margin-block: .4em 0;
+  white-space: pre-wrap;
+}
+
+.analysis-summary-print-frame {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 210mm;
+  height: 297mm;
+  border: 0;
+}

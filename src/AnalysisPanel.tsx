@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import { formatNumber as num, requestJob, resultIsCurrent, type Waveform } from './lib/analysis';
 import { useAuth } from './lib/user';
 import { PrivateFileLink } from './components/private-file-link';
+import AnalysisSummaryExport from './components/AnalysisSummaryExport';
 import { useAssistant } from './components/AssistantProvider';
 import { assistantTargetFromUrl, validSelection, type AssistantSelection } from './lib/assistant-context';
 import WaveformExplorer, { type TimeRange } from './components/WaveformExplorer';
@@ -31,6 +32,7 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   const [waveLoading, setWaveLoading] = useState(false), [waveIntentVersion, setWaveIntentVersion] = useState(0);
   const [kind, setKind] = useState<'model' | 'statistics' | 'attention'>('model'), [page, setPage] = useState(0), [selected, setSelected] = useState('');
   const [note, setNote] = useState(''), [saved, setSaved] = useState('');
+  const savedNotesForExport = useRef('');
   const [editingDetails, setEditingDetails] = useState(false), [savingDetails, setSavingDetails] = useState(false);
   const [detailsDraft, setDetailsDraft] = useState({ title: '', recordedAt: '', details: '' });
   const [detailsError, setDetailsError] = useState(''), [detailsSaved, setDetailsSaved] = useState('');
@@ -54,7 +56,10 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     if (!alive.current || sequence !== refreshSequence.current) return;
     const issue = r.error ?? a.error ?? j.error;
     if (issue) { setError(t('Your record could not be refreshed. Please try again.', '暂时无法刷新记录，请重试。')); setLoading(false); return; }
-    if (metadataVersion === detailsWriteVersion.current) setRecord(r.data);
+    if (metadataVersion === detailsWriteVersion.current) {
+      savedNotesForExport.current = typeof r.data?.notes === 'string' ? r.data.notes : '';
+      setRecord(r.data);
+    }
     setResult(a.data); setJobs(j.data ?? []); setHeartbeat(h.data?.[0]?.last_seen ?? null); setLoading(false);
     if (previousResult.current && a.data?.result_sha256 !== previousResult.current) {
       setWave(null); setOverviewWave(null); setPage(0); setSelected(''); setIntervalSelection(null); setWaveLoading(false);
@@ -191,10 +196,14 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
   }, [hash, usable, online, jobs, bounds.start_s, bounds.end_s]);
   async function saveNotes() {
     if (!supabase || !user || busy) return;
+    const nextNotes = note.trim();
     setBusy(true); setError(''); setSaved('');
     try {
-      const response = await supabase.from('recordings').update({ notes: note.trim() }).eq('id', recordingId).eq('user_id', user.id).is('trashed_at', null).select('id').single();
+      const response = await supabase.from('recordings').update({ notes: nextNotes }).eq('id', recordingId).eq('user_id', user.id).is('trashed_at', null).select('id').single();
       if (response.error || !response.data) throw new Error('not_saved');
+      detailsWriteVersion.current++;
+      if (!alive.current) return;
+      savedNotesForExport.current = nextNotes;
       setSaved(t('Notes saved.', '备注已保存。'));
     } catch { setError(t('Your notes could not be saved. Check that the recording is still available and try again.', '备注未能保存，请确认记录仍然存在后重试。')); }
     finally { setBusy(false); }
@@ -277,6 +286,16 @@ export default function AnalysisPanel({ recordingId, detailed }: { recordingId: 
     <header className="result-heading">
     <p className="eyebrow">{detailed ? t('DETAILED ANALYSIS', '详细分析') : t('RECORDING REPORT', '记录报告')}</p><h1>{record.title}</h1>
     <p className="result-subtitle">{new Date(record.recorded_at ?? record.uploaded_at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-GB')} · {t('Duration', '时长')} {num(display?.extent?.duration_s)} s</p>
+    {usable && <AnalysisSummaryExport key={recordingId} lang={lang} readSnapshot={() => ({
+      title: record.title ?? '',
+      recordedAt: record.recorded_at ?? null,
+      duration: num(display?.extent?.duration_s),
+      breathingRate,
+      expiratoryFlow,
+      partial: execution === 'partial',
+      partialReasons: display?.execution?.partial_reasons,
+      savedNotes: savedNotesForExport.current,
+    })} />}
     </header>
     <nav className="result-assistant-tabs" aria-label={t('Recording workspace', '记录工作区')}><a href={`/analysis?recordId=${recordingId}`} aria-current={detailed ? 'page' : undefined}>{t('Data analysis', '数据分析')}</a><button type="button" onClick={() => askAssistant()}><MessageCircle size={17} />{t('AI explanation & chat', 'AI 解读与对话')}</button></nav>
     {error && <p role="alert" className="result-status error">{error}</p>}
